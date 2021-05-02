@@ -1,11 +1,13 @@
 use std::time::Duration;
 
+
+#[derive(serde::Deserialize, Debug, Clone)]
 pub struct Config {
-    pub ticks: Option<u32>,
     pub param1: String,
     pub param2: String,
 }
 
+#[derive(Debug)]
 pub struct State {
     population: Vec<f32>,
 }
