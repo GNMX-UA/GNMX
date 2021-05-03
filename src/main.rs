@@ -83,7 +83,5 @@ async fn main() {
     let files = warp::fs::dir("static").map(types);
     let routes = ws.or(files);
 
-
-
     warp::serve(routes).run(([127, 0, 0, 1], 3030)).await
 }

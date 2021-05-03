@@ -8,11 +8,13 @@ use crate::fields::{Field, InputField};
 pub enum Msg {
     Param1(<InputField<String> as Field>::Msg),
     Update,
+    Pause
 }
 
 pub struct UpdateForm {
     param1: InputField<String>,
     update: Button<Msg>,
+    pause: Button<Msg>
 }
 
 impl UpdateForm {
@@ -20,6 +22,7 @@ impl UpdateForm {
         Self {
             param1: InputField::new("param1", false),
             update: Button::new("update parameters", "is-link", "fa-wrench", || Msg::Update),
+            pause: Button::new("pause simulation", "is-danger is-outline", "fa-pause", || Msg::Pause)
         }
     }
 
@@ -29,7 +32,8 @@ impl UpdateForm {
             Msg::Param1(msg) => {
                 self.param1.update(msg, &mut orders.proxy(Msg::Param1));
                 None
-            }
+            },
+            Msg::Pause => {log!("lemayo"); None}
         }
     }
 
@@ -39,11 +43,15 @@ impl UpdateForm {
         Some(Update { param1: param1? })
     }
 
-    pub fn view(&self) -> Node<Msg> {
+    pub fn view(&self, started: bool) -> Node<Msg> {
         div![
             C!["box"],
             self.param1.view().map_msg(Msg::Param1),
-            self.update.view(false)
+            div![C!["buttons"],
+                self.update.view(started),
+                self.pause.view(started),
+            ]
+
         ]
     }
 }
