@@ -1,5 +1,3 @@
-pub mod update;
-pub mod initial;
+pub mod config;
 
-pub use update::*;
-pub use initial::InitialForm;
+pub use config::*;

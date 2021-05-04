@@ -93,7 +93,7 @@ where
         self.value = msg;
     }
 
-    fn view(&self) -> Vec<Node<Self::Msg>> {
+    fn view(&self, readonly: bool) -> Vec<Node<Self::Msg>> {
         let (danger, error) = match &self.state {
             State::Error(error) => (true, error.as_str()),
             State::Empty if !self.optional && self.submitted.load(Ordering::Relaxed) => {
@@ -117,8 +117,7 @@ where
                 input![
                     C!["input", IF!(danger => "is-danger")],
                     input_ev(Ev::Input, |str| str),
-                    attrs! {At::Placeholder => &self.placeholder},
-                    attrs! {At::Value => &self.value}
+                    attrs! {At::Placeholder => &self.placeholder, At::Value => &self.value, At::ReadOnly => readonly.as_at_value()},
                 ],
                 IF![danger => span![C!["icon is-small is-right"], i![C!["fas", "fa-exclamation-triangle"]]]]
             ],

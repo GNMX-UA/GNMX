@@ -78,7 +78,7 @@ impl Field for SelectField {
         }
     }
 
-    fn view(&self) -> Vec<Node<Self::Msg>> {
+    fn view(&self, readonly: bool) -> Vec<Node<Self::Msg>> {
         vec![div![
             C!["field"],
             label![C!["label"], self.label],

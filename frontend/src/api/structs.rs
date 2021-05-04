@@ -2,7 +2,7 @@ use serde::{Serialize, Deserialize};
 
 // copy pasta from backend
 #[derive(Deserialize, Serialize, Debug, Clone)]
-pub struct Update {
+pub struct Config {
     pub param1: String,
 }
 
@@ -14,7 +14,7 @@ pub struct Initial {
 #[derive(Deserialize, Serialize, Clone, Debug)]
 pub enum Command {
     Pause,
-    Update(Update),
+    Update(Config),
 }
 
 #[derive(Deserialize, Serialize, Clone, Debug)]

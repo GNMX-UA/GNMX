@@ -1,87 +1,115 @@
-use futures::{FutureExt, StreamExt};
-use log::{info, warn};
-use warp::{Filter, Reply};
+#[macro_use]
+extern crate rocket;
 
-use simulation::{Config, init, step};
-use warp::ws::Message;
-use std::sync::mpsc;
+use rocket::State;
+use rocket_contrib::json::Json;
 
-#[derive(serde::Deserialize, Clone, Debug)]
-pub enum Command {
-    Pause,
-    Update(Config),
+use simulation::{init, step};
+use std::sync::{mpsc, Arc, Mutex};
+
+use serde::{Deserialize, Serialize};
+use rocket_contrib::serve::StaticFiles;
+use rocket_cors::CorsOptions;
+
+#[derive(Deserialize, Clone, Debug)]
+struct Initial {
+    ticks: Option<u64>,
 }
 
-#[derive(serde::Deserialize, Clone, Debug)]
-pub enum Msg {
-    Start{ticks: Option<u64>, config: Config},
+#[derive(Deserialize, Clone, Debug)]
+struct Config;
 
-    Command(Command),
-
-    Notify(Vec<f32>)
+#[derive(Serialize, Deserialize, Clone, Debug)]
+struct Data {
+    pub size: f32,
+    pub phenotype: f32,
 }
 
+struct Inner {
+    pub config: Config,
+    pub values: Vec<Data>,
+    pub killer: mpsc::Sender<()>,
+}
 
-fn simulate(ticks: Option<u64>, mut config: Config, receiver: mpsc::Receiver<Command>) {
+type Shared = Arc<Mutex<Option<Inner>>>;
+
+fn simulate(initial: Initial, shared: Shared, kill: mpsc::Receiver<()>) {
     let mut state = init();
-    let ticks = ticks.unwrap_or(u64::MAX); // i really don't care
 
-    for _ in 0..ticks {
-        match receiver.try_recv() {
-            Ok(Command::Pause) => unimplemented!(),
-            Ok(Command::Update(new)) => config = new,
-            _ => (),
+    for _ in 0..initial.ticks.unwrap_or(u64::MAX) {
+        if let Err(_) = kill.try_recv() {
+            return;
         }
 
-        step(&mut state, &config)
+        let mut lock = shared.lock().unwrap();
+        // step(&mut state, &inner.config);
+        println!("step");
+
+        lock.as_mut().unwrap().values.push(Data {
+            size: 5.,
+            phenotype: 2.,
+        })
     }
 }
 
-async fn upgrade(conn: warp::ws::WebSocket) {
-    let (msg_sender, mut msg_receiver) = conn.split();
-    let mut command_sender = None;
+fn start(initial: Initial, config: Config, shared: &Shared) {
+    let (sender, receiver) = mpsc::channel();
 
-    // this whole thing is kinda messy
-    while let Some(Ok(message)) = msg_receiver.next().await {
-        match message.to_str() {
-            Ok(msg) => match (serde_json::from_str(msg).unwrap(), &mut command_sender) {
-                (Msg::Start{..}, Some(_)) => warn!("simulation already started, ignoring"),
-                (Msg::Start{ticks, config}, old) => {
-                    let (sender, receiver) = mpsc::channel();
-                    *old = Some(sender);
-                    tokio::task::spawn_blocking(move || simulate(ticks, config, receiver));
-                }
-                (Msg::Command(cmd), Some(sender)) => sender.send(cmd).unwrap(),
-                (Msg::Command(_), None) => warn!("received command without starting, ignoring"),
-                (Msg::Notify(_), _) => warn!("server should not receive a notify from the client, ignoring")
-            },
-            Err(_) => warn!("websocket encountered an error, ignoring")
-        }
+    let inner = Inner {
+        config,
+        values: vec![],
+        killer: sender,
+    };
+    shared.lock().unwrap().get_or_insert(inner);
+    let cloned = shared.clone();
+
+    std::thread::spawn(move || simulate(initial, cloned, receiver));
+}
+
+#[post("/start", data = "<pair>")]
+fn start_route(pair: Json<(Initial, Config)>, shared: State<Shared>) -> &'static str {
+    let result = shared
+        .lock()
+        .unwrap()
+        .as_ref()
+        .map(|_| "already running")
+        .unwrap_or_default();
+
+    // double lock of mutex in one function
+    let (initial, config) = pair.into_inner();
+    start(initial, config, shared.inner());
+
+    result
+}
+
+#[post("/stop")]
+fn stop_route(shared: State<Shared>) -> String {
+    match &mut *shared.lock().unwrap() {
+        Some(Inner { killer, .. }) => killer.send(()).unwrap(),
+        None => return "not running".to_string(),
     }
+    String::new()
+}
+
+#[post("/update", data = "<config>")]
+fn update_route(config: Json<Config>, shared: State<Shared>) -> String {
+    match &mut *shared.lock().unwrap() {
+        Some(inner) => inner.config = config.into_inner(),
+        None => return "not running".to_string(),
+    }
+    String::new()
 }
 
 #[tokio::main]
-async fn main() {
-    pretty_env_logger::init();
+async fn main() -> Result<(), rocket::error::Error> {
+    let routes = routes![start_route, stop_route, update_route];
+    let managed: Shared = Arc::new(Mutex::default());
 
-    let types = |reply: warp::filters::fs::File|
-        {
-            if reply.path().ends_with("wasm.js")
-            {
-                let reply = warp::reply::with_header(reply, "Cache-Control", "no-store");
-                let reply = warp::reply::with_header(reply, "Content-Type", "text/javascript");
-                reply.into_response()
-            } else {
-                reply.into_response()
-            }
-        };
-
-    let ws = warp::path("ws")
-        .and(warp::ws())
-        .map(|ws: warp::ws::Ws| ws.on_upgrade(upgrade));
-
-    let files = warp::fs::dir("static").map(types);
-    let routes = ws.or(files);
-
-    warp::serve(routes).run(([127, 0, 0, 1], 3030)).await
+    rocket::build()
+        .attach(CorsOptions::default().to_cors().unwrap())
+        .mount("/api", routes)
+        .mount("/", StaticFiles::from("static"))
+        .manage(managed)
+        .launch()
+        .await
 }

@@ -31,5 +31,5 @@ pub trait Field {
     fn value(&self, submit: bool) -> Option<Self::Value>;
 
     fn update(&mut self, msg: Self::Msg, orders: &mut impl Orders<Self::Msg>);
-    fn view(&self) -> Vec<Node<Self::Msg>>;
+    fn view(&self, readonly: bool) -> Vec<Node<Self::Msg>>;
 }

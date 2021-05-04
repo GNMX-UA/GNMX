@@ -9,20 +9,29 @@ pub fn draw(canvas_id: &str, values: &[f32]) -> Option<()> {
     let font: FontDesc = ("sans-serif", 20.0).into();
 
     root.fill(&WHITE).ok()?;
-    let min = values.iter().min_by(|a, b| a.partial_cmp(b).unwrap()).unwrap();
-    let max = values.iter().max_by(|a, b| a.partial_cmp(b).unwrap()).unwrap();
+    let min = values
+        .iter()
+        .min_by(|a, b| a.partial_cmp(b).unwrap())
+        .unwrap();
+    let max = values
+        .iter()
+        .max_by(|a, b| a.partial_cmp(b).unwrap())
+        .unwrap();
 
     let mut chart = ChartBuilder::on(&root)
         .margin(20)
         .x_label_area_size(30)
         .y_label_area_size(30)
-        .build_cartesian_2d(min, max)
+        .build_cartesian_2d(0..10, 0..100)
         .ok()?;
 
     chart.configure_mesh().x_labels(3).y_labels(3).draw().ok()?;
 
     chart
-        .draw_series(LineSeries::new(values.iter().enumerate(), &RED))
+        .draw_series(LineSeries::new(
+            values.iter().enumerate().map(|(x, y)| (x as i32, *y as i32)),
+            &RED,
+        ))
         .ok()?;
 
     root.present().ok()
