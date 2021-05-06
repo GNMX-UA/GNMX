@@ -1,4 +1,4 @@
-use std::{f64::consts::PI, fmt::Error, time::Duration};
+use std::f64::consts::PI;
 
 use nalgebra::{DMatrix, DVector};
 use rand::{thread_rng, Rng};
@@ -21,7 +21,7 @@ pub struct InitConfig {
 	pub environment: DVector<f64>,
 }
 
-#[derive(serde::Deserialize, Debug, Clone)]
+#[derive(Clone)]
 pub struct Config {
 	// max ticks, unlimited if None (=100000)
 	pub t_max:                Option<u64>,
@@ -34,7 +34,7 @@ pub struct Config {
 	// recombinational probality (=0.01)
 	pub rec:                  f64,
 	// maximum amount of offspring (=1000)
-	pub r_max:                u64,
+	pub r_max:                f64,
 	// selection strength (standard deviation)
 	pub selection_sigma:      f64,
 	// generation overlap
@@ -55,31 +55,32 @@ pub struct State {
 }
 
 impl State {
-	pub fn environment(&mut self, environment_function: fn(&mut DVector<f64>, u64)) {
-		environment_function(&mut self.environment, self.tick);
-	}
-
 	pub fn adult_death(&mut self, gamma: f64) -> DVector<usize> {
 		let mut rng = thread_rng();
-		(0 .. self.population.len())
-			.filter(|i| rng.gen_bool(gamma))
-			.collect()
+		DVector::from_iterator(
+			self.population.len(),
+			(0 .. self.population.len()).filter(|_| rng.gen_bool(gamma)),
+		)
 	}
 
-	pub fn reproduction(&mut self, r_max: u64, selection_sigma: f64) -> DVector<f64> {
-		let phenotype = self.population.row_sum();
-		self.r_max / (selection_sigma * (2.0 * PI).sqrt())
-			* (-(&self.environment - phenotype) / (2.0 * selection_sigma.pow(2))).exp()
+	pub fn reproduction(&mut self, r_max: f64, selection_sigma: f64) -> DVector<f64> {
+		let phenotype = self.population.row_sum_tr();
+		let scale = r_max / (selection_sigma * (2.0 * PI).sqrt());
+		let chance: DVector<f64> =
+			(-(&self.environment - phenotype) / (2.0 * selection_sigma.powi(2))).map(|i| i.exp());
+		scale * chance
 	}
 
-	pub fn density_regulation(&mut self, offspring: DVector<f64>) {}
+	pub fn density_regulation(&mut self, offspring: &DVector<f64>) {
+		let patch_size = self.population.len() / self.environment.len();
+	}
 
 	pub fn dispersal(&mut self) {}
 
 	pub fn mutation(&mut self) {}
 }
 
-pub fn init(init_config: InitConfig) -> Result<State, &str> {
+pub fn init(init_config: InitConfig) -> Result<State, &'static str> {
 	if init_config.population.ncols() % init_config.environment.ncols() != 0 {
 		return Err("Population size must be divisible by number of patches");
 	}
@@ -92,10 +93,9 @@ pub fn init(init_config: InitConfig) -> Result<State, &str> {
 }
 
 pub fn step(state: &mut State, config: &Config) {
-	state.environment(config.environment_function);
+	(config.environment_function)(&mut state.environment, state.tick);
 	let death = state.adult_death(config.gamma);
 	let offspring = state.reproduction(config.r_max, config.selection_sigma);
-	state.density_regulation();
+	state.density_regulation(&offspring);
 	state.dispersal();
-	state.recruitment();
 }
