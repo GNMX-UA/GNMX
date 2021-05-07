@@ -1,7 +1,10 @@
 use std::f64::consts::PI;
 
-use nalgebra::{DMatrix, DVector};
-use rand::{thread_rng, Rng};
+use nalgebra::{DMatrix, DVector, DVectorSlice};
+use rand::{
+	distributions::{Bernoulli, Distribution, WeightedIndex},
+	thread_rng, Rng,
+};
 
 // possible extensions:
 // no juvenile/adult carrying capacity (= 1/n)
@@ -26,7 +29,7 @@ pub struct Config {
 	// max ticks, unlimited if None (=100000)
 	pub t_max:                Option<u64>,
 	// trait mutation probability (=0.01)
-	pub mutation_mu:          DVector<f64>,
+	pub mutation_mu:          f64,
 	// expected mutational effect size (=0.01)
 	pub mutation_sigma:       f64,
 	// bin size for mutational effects (=0.01)
@@ -55,24 +58,40 @@ pub struct State {
 }
 
 impl State {
-	pub fn adult_death(&mut self, gamma: f64) -> DVector<usize> {
+	pub fn adult_death(&mut self, gamma: f64) -> DVector<bool> {
 		let mut rng = thread_rng();
 		DVector::from_iterator(
 			self.population.len(),
-			(0 .. self.population.len()).filter(|_| rng.gen_bool(gamma)),
+			(0 .. self.population.len()).map(|_| rng.gen_bool(gamma)),
 		)
 	}
 
 	pub fn reproduction(&mut self, r_max: f64, selection_sigma: f64) -> DVector<f64> {
 		let phenotype = self.population.row_sum_tr();
 		let scale = r_max / (selection_sigma * (2.0 * PI).sqrt());
+		// TODO not use map?
 		let chance: DVector<f64> =
 			(-(&self.environment - phenotype) / (2.0 * selection_sigma.powi(2))).map(|i| i.exp());
 		scale * chance
 	}
 
-	pub fn density_regulation(&mut self, offspring: &DVector<f64>) {
-		let patch_size = self.population.len() / self.environment.len();
+	pub fn density_regulation(&mut self, mut reproduction: DVector<f64>, death: DVector<bool>) {
+		let n = self.environment.len();
+		let patch_size = self.population.len() / n;
+		let mut rng = thread_rng();
+		let mut offspring = Vec::with_capacity(2 * death.len()); //TODO proper
+		reproduction
+			.as_slice()
+			.chunks(patch_size)
+			.for_each(|patch| {
+				let mut distr = WeightedIndex::new(patch).unwrap();
+				let amount_death = death.len(); //TODO proper
+				distr
+					.sample_iter(&mut rng)
+					.take(amount_death)
+					.for_each(|index| offspring.push(self.population[index]));
+			});
+		// todo shuffle?
 	}
 
 	pub fn dispersal(&mut self) {}
@@ -96,6 +115,6 @@ pub fn step(state: &mut State, config: &Config) {
 	(config.environment_function)(&mut state.environment, state.tick);
 	let death = state.adult_death(config.gamma);
 	let offspring = state.reproduction(config.r_max, config.selection_sigma);
-	state.density_regulation(&offspring);
+	state.density_regulation(offspring, death);
 	state.dispersal();
 }
