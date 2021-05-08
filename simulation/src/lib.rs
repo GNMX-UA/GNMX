@@ -15,6 +15,8 @@ use rand::{
 // TODO don't scale by sqrt(2pi)
 
 pub struct InitConfig {
+	// max ticks, unlimited if None (=100000)
+	pub t_max:                Option<u64>,
 	// initial population: columns are individuals, rows are loci
 	// population size N = population.ncols() cannot change (=6000)
 	// number of loci k = population.nrow() cannot change (=4)
@@ -26,8 +28,6 @@ pub struct InitConfig {
 
 #[derive(Clone)]
 pub struct Config {
-	// max ticks, unlimited if None (=100000)
-	pub t_max:                Option<u64>,
 	// trait mutation probability (=0.01)
 	pub mutation_mu:          f64,
 	// expected mutational effect size (=0.01)
