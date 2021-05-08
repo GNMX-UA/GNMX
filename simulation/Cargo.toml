@@ -9,6 +9,7 @@ edition = "2018"
 [dependencies]
 serde = { version = "1.0", features = ["derive"] }
 rand = "*"
+rand_distr = "*"
 itertools = "*"
 
 #[profile.debug]

@@ -1,10 +1,9 @@
+use core::ptr;
 use std::f64::consts::PI;
 
 use itertools::izip;
-use rand::{
-	distributions::{Distribution, WeightedIndex},
-	thread_rng, Rng,
-};
+use rand::{thread_rng, Rng};
+use rand_distr::{Bernoulli, Distribution, Normal, WeightedIndex};
 
 // possible extensions:
 // no juvenile/adult carrying capacity (= 1/n)
@@ -12,15 +11,16 @@ use rand::{
 // measuring intervals, histint
 // theta vector
 // phenotype is not sum -> use inner product
+// dispersal chance not equal (no pool)
 // TODO don't scale by sqrt(2pi)
 
 #[derive(Clone)]
 pub struct Individual {
-	genotype: Vec<f64>,
+	loci: Vec<f64>,
 }
 
 impl Individual {
-	fn phenotype(&self) -> f64 { self.genotype.iter().sum() }
+	fn phenotype(&self) -> f64 { self.loci.iter().sum() }
 }
 
 pub struct Patch {
@@ -34,7 +34,7 @@ pub struct InitConfig {
 	// max ticks, unlimited if None (=100000)
 	pub t_max:   Option<u64>,
 	// population size cannot change (=6000)
-	// number of loci cannot change (=4)
+	// number of loci (half if diploid) cannot change (=4)
 	// patch number cannot change
 	pub patches: Vec<Patch>,
 }
@@ -85,13 +85,14 @@ impl State {
 		reproductive_success
 	}
 
-	pub fn adult_death(&self, gamma: f64) -> Vec<Vec<&Individual>> {
+	pub fn adult_death(&mut self, gamma: f64) -> Vec<Vec<&mut Individual>> {
 		let mut rng = thread_rng();
+		let distr = Bernoulli::new(gamma).unwrap();
 		let mut death = Vec::with_capacity(self.patches.len());
-		for patch in &self.patches {
+		for patch in &mut self.patches {
 			let mut patch_death = Vec::with_capacity(patch.individuals.len()); // upper bound
-			for individual in &patch.individuals {
-				if !rng.gen_bool(gamma) {
+			for individual in &mut patch.individuals {
+				if !distr.sample(&mut rng) {
 					patch_death.push(individual);
 				}
 			}
@@ -103,7 +104,7 @@ impl State {
 	pub fn density_regulation(
 		&self,
 		reproductive_success: &Vec<Vec<f64>>,
-		death: &Vec<Vec<&Individual>>,
+		death: &Vec<Vec<&mut Individual>>,
 	) -> Vec<Vec<Individual>> {
 		let mut new_generation = Vec::with_capacity(self.patches.len());
 		for (patch, patch_success, patch_death) in izip!(&self.patches, reproductive_success, death)
@@ -112,7 +113,7 @@ impl State {
 				WeightedIndex::new(patch_success)
 					.unwrap()
 					.sample_iter(thread_rng())
-					.take(patch_death.len())
+					.take(2 * patch_death.len())
 					.map(|index| patch.individuals[index].clone())
 					.collect(),
 			);
@@ -120,9 +121,70 @@ impl State {
 		new_generation
 	}
 
-	pub fn dispersal(&mut self) {}
+	pub fn recombination() { todo!() }
 
-	pub fn mutation(&mut self) {}
+	pub fn haploid_generation(mut new_generation: Vec<Vec<Individual>>) -> Vec<Vec<Individual>> {
+		for patch in &mut new_generation {
+			patch.resize(patch.len() / 2, Individual { loci: vec![] });
+		}
+		new_generation
+	}
+
+	pub fn dispersal(mut new_generation: Vec<Vec<Individual>>, m: f64) -> Vec<Vec<Individual>> {
+		let mut rng = thread_rng();
+		let distr = Bernoulli::new(m).unwrap();
+		let mut pool: Vec<_> = new_generation
+			.iter_mut()
+			.flatten()
+			.filter(|_| distr.sample(&mut rng))
+			.collect();
+		for i in (1 .. pool.len()).rev() {
+			let pa = ptr::addr_of_mut!(*pool[i]);
+			let pb = ptr::addr_of_mut!(*pool[gen_index(&mut thread_rng(), i + 1)]);
+			unsafe {
+				ptr::swap(pa, pb);
+			}
+		}
+		new_generation
+	}
+
+	pub fn mutation(
+		mut new_generation: Vec<Vec<Individual>>,
+		mutation_mu: f64,
+		mutation_sigma: f64,
+		mutation_step: f64,
+	) -> Vec<Vec<Individual>> {
+		let mut rng = thread_rng();
+		let distr = Bernoulli::new(mutation_mu).unwrap();
+		// fixed
+		let up_down = Bernoulli::new(0.5).unwrap();
+		// gausian
+		// let up_down = Normal::new(0.0, mutation_sigma).unwrap();
+		for patch in &mut new_generation {
+			for individual in patch {
+				for locus in &mut individual.loci {
+					// fixed
+					*locus += mutation_step
+						* 2.0 * (up_down.sample(&mut rng) as i32 as f64 - 0.5)
+						* distr.sample(&mut rng) as i32 as f64;
+					// gaussian
+					// *locus += distr.sample(&mut rng) as i32 as f64
+					// 	* mutation_step * (up_down.sample(&mut rng) * mutation_sigma
+					// 	/ mutation_step)
+					// 	.round()
+				}
+			}
+		}
+		new_generation
+	}
+
+	fn update(new_generation: Vec<Vec<Individual>>, death: Vec<Vec<&mut Individual>>) {
+		for (new_patch, death_patch) in new_generation.into_iter().zip(death) {
+			for (new_individual, death_individual) in new_patch.into_iter().zip(death_patch) {
+				*death_individual = new_individual;
+			}
+		}
+	}
 }
 
 pub fn init(init_config: InitConfig) -> Result<State, &'static str> {
@@ -136,10 +198,27 @@ pub fn step(state: &mut State, config: &Config) {
 	(config.environment_function)(&mut state.patches, state.tick);
 	let reproductive_success = state.reproduction(config.r_max, config.selection_sigma);
 	let death = state.adult_death(config.gamma);
-	let new_generation = state.density_regulation(&reproductive_success, &death);
+	let mut new_generation = state.density_regulation(&reproductive_success, &death);
 	if config.diploid {
-		todo!()
+		State::recombination();
 	} else {
+		new_generation = State::haploid_generation(new_generation);
 	}
-	state.dispersal();
+	new_generation = State::dispersal(new_generation, config.m);
+	new_generation = State::mutation(
+		new_generation,
+		config.mutation_mu,
+		config.mutation_sigma,
+		config.mutation_step,
+	);
+	State::update(new_generation, death);
+}
+
+#[inline]
+fn gen_index<R: Rng + ?Sized>(rng: &mut R, ubound: usize) -> usize {
+	if ubound <= (core::u32::MAX as usize) {
+		rng.gen_range(0 .. ubound as u32) as usize
+	} else {
+		rng.gen_range(0 .. ubound)
+	}
 }
