@@ -8,16 +8,20 @@ pub struct InitConfig {
     // initial population: columns are individuals, rows are loci
     // population size N = population.ncols() cannot change (=6000)
     // number of loci k = population.nrow() cannot change (=4)
-    pub population: DMatrix<f64>,
+    pub population_size: u64,
+
+    pub population_type: i64,
     // initial environment
     // patch number n = environment.ncols() cannot change (must devide N)
-    pub environment: DVector<f64>,
+    pub environment_size: u64,
+
+    pub environment_type: i64,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Config {
     // trait mutation probability (=0.01)
-    pub mutation_mu: DVector<f64>,
+    pub mutation_mu: f64,
     // expected mutational effect size (=0.01)
     pub mutation_sigma: f64,
     // bin size for mutational effects (=0.01)
@@ -34,8 +38,6 @@ pub struct Config {
     pub diploid: bool,
     // dispersal parameter
     pub m: f64,
-    // function to determine environment and selective optima
-    pub environment_function: fn(&mut DVector<f64>, u64),
 }
 
 #[derive(Deserialize, Serialize, Clone, Debug)]

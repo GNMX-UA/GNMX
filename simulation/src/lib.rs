@@ -5,6 +5,7 @@ use rand::{
 	distributions::{Bernoulli, Distribution, WeightedIndex},
 	thread_rng, Rng,
 };
+use serde::{Serialize, Deserialize};
 
 // possible extensions:
 // no juvenile/adult carrying capacity (= 1/n)
@@ -14,6 +15,7 @@ use rand::{
 // phenotype is not sum -> use inner product
 // TODO don't scale by sqrt(2pi)
 
+// #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct InitConfig {
 	// max ticks, unlimited if None (=100000)
 	pub t_max:                Option<u64>,
@@ -26,7 +28,7 @@ pub struct InitConfig {
 	pub environment: DVector<f64>,
 }
 
-#[derive(Clone)]
+// #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Config {
 	// trait mutation probability (=0.01)
 	pub mutation_mu:          f64,

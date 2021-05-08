@@ -3,7 +3,7 @@ use serde::Serialize;
 use seed::fetch::{Request, Method};
 use seed::log;
 
-use crate::api::{Initial, Config};
+use crate::api::{Config, InitConfig};
 
 async fn post(url: &str, data: &impl Serialize) -> Result<String, &'static str> {
     Request::new(format!("http://localhost:8000/{}", url))
@@ -20,7 +20,7 @@ async fn post(url: &str, data: &impl Serialize) -> Result<String, &'static str> 
         .map_err(|_| "Could not parse response to string")
 }
 
-pub async fn start(pair: (Initial, Config)) {
+pub async fn start(pair: (InitConfig, Config)) {
     log!(post("api/start", &pair).await)
 }
 
