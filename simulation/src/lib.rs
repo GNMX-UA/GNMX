@@ -1,3 +1,4 @@
+use core::ptr;
 use std::f64::consts::PI;
 
 use nalgebra::{DMatrix, DVector, DVectorSlice};
@@ -6,6 +7,9 @@ use rand::{
 	thread_rng, Rng,
 };
 use serde::{Serialize, Deserialize};
+use itertools::izip;
+use rand::{thread_rng, Rng};
+use rand_distr::{Bernoulli, Distribution, Normal, WeightedIndex};
 
 // possible extensions:
 // no juvenile/adult carrying capacity (= 1/n)
@@ -13,19 +17,33 @@ use serde::{Serialize, Deserialize};
 // measuring intervals, histint
 // theta vector
 // phenotype is not sum -> use inner product
+// dispersal chance not equal (no pool)
 // TODO don't scale by sqrt(2pi)
+
+#[derive(Clone)]
+pub struct Individual {
+	loci: Vec<f64>,
+}
+
+impl Individual {
+	fn phenotype(&self) -> f64 { self.loci.iter().sum() }
+}
+
+pub struct Patch {
+	environment: f64,
+	individuals: Vec<Individual>,
+}
+
+impl Patch {}
 
 // #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct InitConfig {
 	// max ticks, unlimited if None (=100000)
-	pub t_max:                Option<u64>,
-	// initial population: columns are individuals, rows are loci
-	// population size N = population.ncols() cannot change (=6000)
-	// number of loci k = population.nrow() cannot change (=4)
-	pub population:  DMatrix<f64>,
-	// initial environment
-	// patch number n = environment.ncols() cannot change (must devide N)
-	pub environment: DVector<f64>,
+	pub t_max:   Option<u64>,
+	// population size cannot change (=6000)
+	// number of loci (half if diploid) cannot change (=4)
+	// patch number cannot change
+	pub patches: Vec<Patch>,
 }
 
 // #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -49,74 +67,165 @@ pub struct Config {
 	// dispersal parameter
 	pub m:                    f64,
 	// function to determine environment and selective optima
-	pub environment_function: fn(&mut DVector<f64>, u64),
+	pub environment_function: fn(&mut Vec<Patch>, u64),
 }
 
-#[derive(Debug)]
 pub struct State {
-	tick:        u64,
-	population:  DMatrix<f64>,
-	environment: DVector<f64>,
+	tick:    u64,
+	patches: Vec<Patch>,
 }
 
 impl State {
-	pub fn adult_death(&mut self, gamma: f64) -> DVector<bool> {
+	pub fn reproduction(&self, r_max: f64, selection_sigma: f64) -> Vec<Vec<f64>> {
+		let mut reproductive_success = Vec::with_capacity(self.patches.len());
+		for patch in &self.patches {
+			let mut patch_success = Vec::with_capacity(patch.individuals.len());
+			for individual in &patch.individuals {
+				let offspring = r_max / (selection_sigma * (2.0 * PI).sqrt())
+					* (-(&patch.environment - individual.phenotype())
+						/ (2.0 * selection_sigma.powi(2)))
+					.exp();
+				patch_success.push(offspring);
+			}
+			reproductive_success.push(patch_success);
+		}
+		reproductive_success
+	}
+
+	pub fn adult_death(&mut self, gamma: f64) -> Vec<Vec<&mut Individual>> {
 		let mut rng = thread_rng();
-		DVector::from_iterator(
-			self.population.len(),
-			(0 .. self.population.len()).map(|_| rng.gen_bool(gamma)),
-		)
+		let distr = Bernoulli::new(gamma).unwrap();
+		let mut death = Vec::with_capacity(self.patches.len());
+		for patch in &mut self.patches {
+			let mut patch_death = Vec::with_capacity(patch.individuals.len()); // upper bound
+			for individual in &mut patch.individuals {
+				if !distr.sample(&mut rng) {
+					patch_death.push(individual);
+				}
+			}
+			death.push(patch_death);
+		}
+		death
 	}
 
-	pub fn reproduction(&mut self, r_max: f64, selection_sigma: f64) -> DVector<f64> {
-		let phenotype = self.population.row_sum_tr();
-		let scale = r_max / (selection_sigma * (2.0 * PI).sqrt());
-		// TODO not use map?
-		let chance: DVector<f64> =
-			(-(&self.environment - phenotype) / (2.0 * selection_sigma.powi(2))).map(|i| i.exp());
-		scale * chance
+	pub fn density_regulation(
+		&self,
+		reproductive_success: &Vec<Vec<f64>>,
+		death: &Vec<Vec<&mut Individual>>,
+	) -> Vec<Vec<Individual>> {
+		let mut new_generation = Vec::with_capacity(self.patches.len());
+		for (patch, patch_success, patch_death) in izip!(&self.patches, reproductive_success, death)
+		{
+			new_generation.push(
+				WeightedIndex::new(patch_success)
+					.unwrap()
+					.sample_iter(thread_rng())
+					.take(2 * patch_death.len())
+					.map(|index| patch.individuals[index].clone())
+					.collect(),
+			);
+		}
+		new_generation
 	}
 
-	pub fn density_regulation(&mut self, mut reproduction: DVector<f64>, death: DVector<bool>) {
-		let n = self.environment.len();
-		let patch_size = self.population.len() / n;
+	pub fn recombination() { todo!() }
+
+	pub fn haploid_generation(mut new_generation: Vec<Vec<Individual>>) -> Vec<Vec<Individual>> {
+		for patch in &mut new_generation {
+			patch.resize(patch.len() / 2, Individual { loci: vec![] });
+		}
+		new_generation
+	}
+
+	pub fn dispersal(mut new_generation: Vec<Vec<Individual>>, m: f64) -> Vec<Vec<Individual>> {
 		let mut rng = thread_rng();
-		let mut offspring = Vec::with_capacity(2 * death.len()); //TODO proper
-		reproduction
-			.as_slice()
-			.chunks(patch_size)
-			.for_each(|patch| {
-				let mut distr = WeightedIndex::new(patch).unwrap();
-				let amount_death = death.len(); //TODO proper
-				distr
-					.sample_iter(&mut rng)
-					.take(amount_death)
-					.for_each(|index| offspring.push(self.population[index]));
-			});
-		// todo shuffle?
+		let distr = Bernoulli::new(m).unwrap();
+		let mut pool: Vec<_> = new_generation
+			.iter_mut()
+			.flatten()
+			.filter(|_| distr.sample(&mut rng))
+			.collect();
+		for i in (1 .. pool.len()).rev() {
+			let pa = ptr::addr_of_mut!(*pool[i]);
+			let pb = ptr::addr_of_mut!(*pool[gen_index(&mut thread_rng(), i + 1)]);
+			unsafe {
+				ptr::swap(pa, pb);
+			}
+		}
+		new_generation
 	}
 
-	pub fn dispersal(&mut self) {}
+	pub fn mutation(
+		mut new_generation: Vec<Vec<Individual>>,
+		mutation_mu: f64,
+		mutation_sigma: f64,
+		mutation_step: f64,
+	) -> Vec<Vec<Individual>> {
+		let mut rng = thread_rng();
+		let distr = Bernoulli::new(mutation_mu).unwrap();
+		// fixed
+		let up_down = Bernoulli::new(0.5).unwrap();
+		// gausian
+		// let up_down = Normal::new(0.0, mutation_sigma).unwrap();
+		for patch in &mut new_generation {
+			for individual in patch {
+				for locus in &mut individual.loci {
+					// fixed
+					*locus += mutation_step
+						* 2.0 * (up_down.sample(&mut rng) as i32 as f64 - 0.5)
+						* distr.sample(&mut rng) as i32 as f64;
+					// gaussian
+					// *locus += distr.sample(&mut rng) as i32 as f64
+					// 	* mutation_step * (up_down.sample(&mut rng) * mutation_sigma
+					// 	/ mutation_step)
+					// 	.round()
+				}
+			}
+		}
+		new_generation
+	}
 
-	pub fn mutation(&mut self) {}
+	fn update(new_generation: Vec<Vec<Individual>>, death: Vec<Vec<&mut Individual>>) {
+		for (new_patch, death_patch) in new_generation.into_iter().zip(death) {
+			for (new_individual, death_individual) in new_patch.into_iter().zip(death_patch) {
+				*death_individual = new_individual;
+			}
+		}
+	}
 }
 
 pub fn init(init_config: InitConfig) -> Result<State, &'static str> {
-	if init_config.population.ncols() % init_config.environment.ncols() != 0 {
-		return Err("Population size must be divisible by number of patches");
-	}
-
 	Ok(State {
-		tick:        0,
-		population:  init_config.population,
-		environment: init_config.environment,
+		tick:    0,
+		patches: init_config.patches,
 	})
 }
 
 pub fn step(state: &mut State, config: &Config) {
-	(config.environment_function)(&mut state.environment, state.tick);
+	(config.environment_function)(&mut state.patches, state.tick);
+	let reproductive_success = state.reproduction(config.r_max, config.selection_sigma);
 	let death = state.adult_death(config.gamma);
-	let offspring = state.reproduction(config.r_max, config.selection_sigma);
-	state.density_regulation(offspring, death);
-	state.dispersal();
+	let mut new_generation = state.density_regulation(&reproductive_success, &death);
+	if config.diploid {
+		State::recombination();
+	} else {
+		new_generation = State::haploid_generation(new_generation);
+	}
+	new_generation = State::dispersal(new_generation, config.m);
+	new_generation = State::mutation(
+		new_generation,
+		config.mutation_mu,
+		config.mutation_sigma,
+		config.mutation_step,
+	);
+	State::update(new_generation, death);
+}
+
+#[inline]
+fn gen_index<R: Rng + ?Sized>(rng: &mut R, ubound: usize) -> usize {
+	if ubound <= (core::u32::MAX as usize) {
+		rng.gen_range(0 .. ubound as u32) as usize
+	} else {
+		rng.gen_range(0 .. ubound)
+	}
 }
