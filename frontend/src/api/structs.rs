@@ -2,19 +2,25 @@ use serde::{Deserialize, Serialize};
 
 // copy pasta from backend
 #[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Individual {
+    loci: Vec<f64>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Patch {
+    environment: f64,
+    individuals: Vec<Individual>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct InitConfig {
     // max ticks, unlimited if None (=100000)
     pub t_max: Option<u64>,
-    // initial population: columns are individuals, rows are loci
-    // population size N = population.ncols() cannot change (=6000)
-    // number of loci k = population.nrow() cannot change (=4)
+
     pub population_size: u64,
-
     pub population_type: i64,
-    // initial environment
-    // patch number n = environment.ncols() cannot change (must devide N)
-    pub environment_size: u64,
 
+    pub environment_size: u64,
     pub environment_type: i64,
 }
 
@@ -40,19 +46,10 @@ pub struct Config {
     pub m: f64,
 }
 
-#[derive(Deserialize, Serialize, Clone, Debug)]
-pub enum Command {
-    Pause,
-    Update(Config),
-}
-
-#[derive(Deserialize, Serialize, Clone, Debug)]
-pub enum Msg {
-    Start(InitConfig),
-
-    Command(Command),
-
-    Notify(Vec<f32>),
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct State {
+    pub tick:    u64,
+    pub patches: Vec<Patch>,
 }
 
 #[derive(Clone, Debug, Deserialize)]

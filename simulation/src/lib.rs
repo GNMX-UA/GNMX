@@ -77,7 +77,7 @@ impl State {
 			for individual in &patch.individuals {
 				let offspring = r_max / (selection_sigma * (2.0 * PI).sqrt())
 					* (-(&patch.environment - individual.phenotype())
-						/ (2.0 * selection_sigma.powi(2)))
+					/ (2.0 * selection_sigma.powi(2)))
 					.exp();
 				patch_success.push(offspring);
 			}
