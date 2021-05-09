@@ -2,7 +2,7 @@ use seed::{prelude::*, *};
 
 use crate::api::{Config, InitConfig, Suggestion, Suggestions};
 use crate::components::Button;
-use crate::fields::types::Shared;
+use crate::fields::slider::SliderField;
 use crate::fields::{Field, InputField, SelectField};
 use seed::futures::StreamExt;
 use std::cell::RefCell;
@@ -15,10 +15,10 @@ pub enum Msg {
 	EnvironmentSize(<InputField<u64> as Field>::Msg),
 	EnvironmentType(<SelectField as Field>::Msg),
 
-	MutationMu(<InputField<f64> as Field>::Msg),
-	MutationSigma(<InputField<f64> as Field>::Msg),
-	MutationStep(<InputField<f64> as Field>::Msg),
-	Rec(<InputField<f64> as Field>::Msg),
+	MutationMu(<SliderField as Field>::Msg),
+	MutationSigma(<SliderField as Field>::Msg),
+	MutationStep(<SliderField as Field>::Msg),
+	Rec(<SliderField as Field>::Msg),
 	RMax(<InputField<f64> as Field>::Msg),
 	SelectionSigma(<InputField<f64> as Field>::Msg),
 	Gamma(<InputField<f64> as Field>::Msg),
@@ -39,10 +39,10 @@ pub struct ConfigForm {
 	environment_type: SelectField,
 
 	// configurable values
-	mutation_mu: InputField<f64>,
-	mutation_sigma: InputField<f64>,
-	mutation_step: InputField<f64>,
-	rec: InputField<f64>,
+	mutation_mu: SliderField,
+	mutation_sigma: SliderField,
+	mutation_step: SliderField,
+	rec: SliderField,
 	r_max: InputField<f64>,
 	selection_sigma: InputField<f64>,
 	gamma: InputField<f64>,
@@ -80,36 +80,30 @@ fn make_suggestions(names: &[&str]) -> Suggestions {
 
 impl ConfigForm {
 	pub fn new() -> Self {
-		let pop_types = make_suggestions(&["default", "special"]);
-		let env_type = make_suggestions(&["default", "special"]);
+		let pop_types = make_suggestions(&["uniform", "normal", "equal"]);
+		let env_type = make_suggestions(&["uniform", "normal", "equal"]);
 
 		Self {
 			t_max: InputField::new("Ticks", false)
 				.with_placeholder("leave empty to run indefinitely")
 				.with_initial(Some(100_000)),
 			population_size: InputField::new("Population size", false).with_initial(Some(6_000)),
-			population_type: SelectField::new("Type", Shared::new(RefCell::new(pop_types))),
+			population_type: SelectField::new("Type", pop_types, false),
 			environment_size: InputField::new("Environment size", false).with_initial(Some(2)),
-			environment_type: SelectField::new("Type", Shared::new(RefCell::new(env_type))),
+			environment_type: SelectField::new("Type", env_type, false),
 
-			mutation_mu: InputField::new("Mutation Mu", false).with_initial(Some(0.01)),
-			mutation_sigma: InputField::new("Mutation Sigma", false).with_initial(Some(0.01)),
-			mutation_step: InputField::new("Mutation Step", false).with_initial(Some(0.01)),
-			rec: InputField::new("Recombinational probability", false).with_initial(Some(0.01)),
+			mutation_mu: SliderField::new("Mutation Mu", 0.0..1.0, 0.01),
+			mutation_sigma: SliderField::new("Mutation Sigma", 0.0..1.0, 0.01),
+			mutation_step: SliderField::new("Mutation Step", 0.0..1.0, 0.01),
+			rec: SliderField::new("Recombinational probability", 0.0..1.0, 0.01),
 			r_max: InputField::new("Max amount of offspring", false).with_initial(Some(1000.)),
 			selection_sigma: InputField::new("Selection Strength (Sigma)", false),
-			gamma: InputField::new("Generation Overlap (Gamma)", false)
-				.with_placeholder("generation overlap"),
+			gamma: InputField::new("Generation Overlap (Gamma)", false),
 			diploid: InputField::new("Diploid", false).with_initial(Some(true)),
 			m: InputField::new("Dispersal parameter (M)", false),
-			start: Button::new("start simulation", "is-success", "fa-play", || Msg::Start),
-			update: Button::new("update parameters", "is-link", "fa-wrench", || Msg::Update),
-			stop: Button::new(
-				"stop simulation",
-				"is-danger is-outline",
-				"fa-times",
-				|| Msg::Stop,
-			),
+			start: Button::new("start", "is-success", "fa-play", || Msg::Start),
+			update: Button::new("update", "is-link", "fa-wrench", || Msg::Update),
+			stop: Button::new("stop", "is-danger is-outline", "fa-times", || Msg::Stop),
 			started: false,
 		}
 	}
@@ -221,64 +215,55 @@ impl ConfigForm {
 
 	pub fn view(&self) -> Node<Msg> {
 		div![
-			C!["box p-6"],
+			C!["p-6"],
+			style!{St::BoxShadow => "-10px 0px 10px 1px #eeeeee"},
 			self.t_max.view(self.started).map_msg(Msg::TMax),
-
 			div![
 				C!["columns"],
 				div![
 					C!["column"],
-					self.population_size.view(false).map_msg(Msg::PopulationSize)
-				],
-				div![
-					C!["column is-narrow"],
-					self.population_type.view(false).map_msg(Msg::PopulationType)
-				],
-			],
-
-			div![
-				C!["columns"],
-				div![
-					C!["column"],
-					self.environment_size.view(false).map_msg(Msg::EnvironmentSize)
-				],
-				div![
-					C!["column is-narrow"],
-					self.environment_type.view(false).map_msg(Msg::EnvironmentType)
-				],
-			],
-
-			div![
-				C!["columns"],
-				div![
-					C!["column"],
-					self.mutation_mu.view(false).map_msg(Msg::MutationMu)
-				],
-				div![
-					C!["column"],
-					self.mutation_sigma.view(false).map_msg(Msg::MutationSigma)
-				],
-				div![
-					C!["column"],
-					self.mutation_step.view(false).map_msg(Msg::MutationStep)
-				]
-			],
-			div![
-				C!["columns"],
-				div![C!["column"], self.rec.view(false).map_msg(Msg::Rec)],
-				div![C!["column"], self.r_max.view(false).map_msg(Msg::RMax)],
-			],
-
-			div![
-				C!["columns"],
-				div![
-					C!["column"],
-					self.selection_sigma
+					self.population_size
 						.view(false)
-						.map_msg(Msg::SelectionSigma)
+						.map_msg(Msg::PopulationSize)
 				],
-				div![C!["column"], self.gamma.view(false).map_msg(Msg::Gamma)],
+				div![
+					C!["column is-narrow"],
+					self.population_type
+						.view(false)
+						.map_msg(Msg::PopulationType)
+				],
 			],
+			div![
+				C!["columns"],
+				div![
+					C!["column"],
+					self.environment_size
+						.view(false)
+						.map_msg(Msg::EnvironmentSize)
+				],
+				div![
+					C!["column is-narrow"],
+					self.environment_type
+						.view(false)
+						.map_msg(Msg::EnvironmentType)
+				],
+			],
+
+			hr![],
+
+			self.mutation_mu.view(false).map_msg(Msg::MutationMu),
+			self.mutation_sigma.view(false).map_msg(Msg::MutationSigma),
+			self.mutation_step.view(false).map_msg(Msg::MutationStep),
+
+			hr![],
+
+			self.rec.view(false).map_msg(Msg::Rec),
+			self.r_max.view(false).map_msg(Msg::RMax),
+
+			self.selection_sigma
+						.view(false)
+						.map_msg(Msg::SelectionSigma),
+			 self.gamma.view(false).map_msg(Msg::Gamma),
 
 			self.diploid.view(false).map_msg(Msg::Diploid),
 			self.m.view(false).map_msg(Msg::M),

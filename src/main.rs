@@ -7,7 +7,8 @@ use rocket::State;
 use rocket_contrib::{json::Json, serve::StaticFiles};
 use rocket_cors::CorsOptions;
 use serde::{Deserialize, Serialize};
-use simulation::{init, step, Config, InitConfig};
+// use simulation::{init, step, Config, InitConfig};
+use simulation::{Config, InitConfig};
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 struct Data {
@@ -25,7 +26,7 @@ type Shared = Arc<Mutex<Option<Inner>>>;
 
 fn simulate(initial: InitConfig, shared: Shared, kill: mpsc::Receiver<()>) {
 	let ticks = initial.t_max.unwrap_or(u64::MAX);
-	let mut state = init(initial).unwrap();
+	// let mut state = init(initial).unwrap();
 
 	for _ in 0..ticks {
 		if let Err(_) = kill.try_recv() {
@@ -34,7 +35,9 @@ fn simulate(initial: InitConfig, shared: Shared, kill: mpsc::Receiver<()>) {
 
 		match shared.lock().unwrap().as_mut() {
 			Some(inner) => {
-				step(&mut state, &inner.config);
+				// step(&mut state, &inner.config);
+				// state.tick += 1;
+
 				inner.values.push(Data {
 					size: 5.,
 					phenotype: 2.,

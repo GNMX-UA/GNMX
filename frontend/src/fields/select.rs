@@ -7,7 +7,6 @@ use seed::{prelude::*, *};
 use crate::api::{Suggestions, Suggestion};
 
 use crate::components::Component;
-use crate::fields::types::Shared;
 use crate::fields::Field;
 use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -18,18 +17,19 @@ pub struct SelectField {
     initial: Option<i64>,
     value: Option<i64>,
 
-    suggestions: Shared<Suggestions>,
+    suggestions: Suggestions,
 
     optional: bool,
+    default: bool,
     submitted: AtomicBool,
-    loading: bool,
 }
 
 impl SelectField {
-    pub fn new(label: &'static str, suggestions: Shared<Suggestions>) -> Self {
+    pub fn new(label: &'static str, suggestions: Suggestions, default: bool) -> Self {
         Self {
             label,
             suggestions,
+            default,
             ..Default::default()
         }
     }
@@ -50,7 +50,6 @@ impl SelectField {
 
     fn view_options(&self) -> Vec<Node<<Self as Field>::Msg>> {
         self.suggestions
-            .borrow()
             .iter()
             .map(|x| self.view_option(x))
             .collect()
@@ -88,14 +87,13 @@ impl Field for SelectField {
                     C![
                         "select",
                         IF!(self.value.is_none() && !self.optional && self.submitted.load(Ordering::Relaxed) => "is-danger"),
-                        IF!(self.loading => "is-loading")
                     ],
                     select![
                         input_ev(Ev::Input, |str| str),
-                        self.view_option(&Suggestion {
+                        IF!(self.default => self.view_option(&Suggestion {
                             name: "Select option".to_owned(),
                             value: -1
-                        }),
+                        })),
                         self.view_options()
                     ]
                 ]

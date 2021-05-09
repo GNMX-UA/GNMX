@@ -112,7 +112,7 @@ where
                 C![
                     "control",
                     IF!(danger => "has-icons-right"),
-                    IF!(!danger => "mb-5")
+                    IF!(!danger => "mb-2") // use 5 for minimal error drift
                 ],
                 input![
                     C!["input", IF!(danger => "is-danger")],
