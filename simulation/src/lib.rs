@@ -8,8 +8,8 @@ use rand::{
 };
 use serde::{Serialize, Deserialize};
 use itertools::izip;
-use rand::{thread_rng, Rng};
-use rand_distr::{Bernoulli, Distribution, Normal, WeightedIndex};
+use rand::{prelude::SliceRandom, thread_rng, Rng};
+use rand_distr::{Bernoulli, Binomial, Distribution, Normal, WeightedIndex};
 
 // possible extensions:
 // no juvenile/adult carrying capacity (= 1/n)
@@ -40,7 +40,7 @@ impl Patch {}
 pub struct InitConfig {
 	// max ticks, unlimited if None (=100000)
 	pub t_max:   Option<u64>,
-	// population size cannot change (=6000)
+	// population size can change (=6000)
 	// number of loci (half if diploid) cannot change (=4)
 	// patch number cannot change
 	pub patches: Vec<Patch>,
@@ -92,18 +92,18 @@ impl State {
 		reproductive_success
 	}
 
-	pub fn adult_death(&mut self, gamma: f64) -> Vec<Vec<&mut Individual>> {
+	pub fn adult_death(&mut self, gamma: f64) -> Vec<usize> {
 		let mut rng = thread_rng();
-		let distr = Bernoulli::new(gamma).unwrap();
 		let mut death = Vec::with_capacity(self.patches.len());
 		for patch in &mut self.patches {
-			let mut patch_death = Vec::with_capacity(patch.individuals.len()); // upper bound
-			for individual in &mut patch.individuals {
-				if !distr.sample(&mut rng) {
-					patch_death.push(individual);
-				}
-			}
-			death.push(patch_death);
+			patch.individuals.shuffle(&mut rng);
+			let patch_alive = Binomial::new(patch.individuals.len() as u64, gamma)
+				.unwrap()
+				.sample(&mut rng) as usize;
+			death.push(patch.individuals.len() - patch_alive);
+			patch
+				.individuals
+				.resize(patch_alive, Individual { loci: vec![] });
 		}
 		death
 	}
@@ -111,7 +111,7 @@ impl State {
 	pub fn density_regulation(
 		&self,
 		reproductive_success: &Vec<Vec<f64>>,
-		death: &Vec<Vec<&mut Individual>>,
+		death: &Vec<usize>,
 	) -> Vec<Vec<Individual>> {
 		let mut new_generation = Vec::with_capacity(self.patches.len());
 		for (patch, patch_success, patch_death) in izip!(&self.patches, reproductive_success, death)
@@ -120,7 +120,7 @@ impl State {
 				WeightedIndex::new(patch_success)
 					.unwrap()
 					.sample_iter(thread_rng())
-					.take(2 * patch_death.len())
+					.take(2 * patch_death)
 					.map(|index| patch.individuals[index].clone())
 					.collect(),
 			);
@@ -185,11 +185,9 @@ impl State {
 		new_generation
 	}
 
-	fn update(new_generation: Vec<Vec<Individual>>, death: Vec<Vec<&mut Individual>>) {
-		for (new_patch, death_patch) in new_generation.into_iter().zip(death) {
-			for (new_individual, death_individual) in new_patch.into_iter().zip(death_patch) {
-				*death_individual = new_individual;
-			}
+	fn update(&mut self, new_generation: Vec<Vec<Individual>>) {
+		for (new_patch, patch) in new_generation.into_iter().zip(&mut self.patches) {
+			patch.individuals.extend(new_patch);
 		}
 	}
 }
@@ -218,7 +216,7 @@ pub fn step(state: &mut State, config: &Config) {
 		config.mutation_sigma,
 		config.mutation_step,
 	);
-	State::update(new_generation, death);
+	state.update(new_generation);
 }
 
 #[inline]
