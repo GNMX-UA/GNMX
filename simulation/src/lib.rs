@@ -1,19 +1,22 @@
 use core::ptr;
-use std::f64::consts::PI;
 
 use itertools::izip;
 use rand::{prelude::SliceRandom, thread_rng, Rng};
 use rand_distr::{Bernoulli, Binomial, Distribution, Normal, WeightedIndex};
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
+
+// TODO juvenile/adult
+// TODO dispersal matrix
+// TODO Vec<Individu>
+// TODO init
 
 // possible extensions:
 // no juvenile/adult carrying capacity (= 1/n)
+// dispersal chance not equal (no pool)
 // mutation_mu/sigma per trait
 // measuring intervals, histint
 // theta vector
 // phenotype is not sum -> use inner product
-// dispersal chance not equal (no pool)
-// TODO don't scale by sqrt(2pi)
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Individual {
@@ -34,7 +37,7 @@ impl Patch {}
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum TempEnum {
-	Default
+	Default,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -42,7 +45,7 @@ pub struct InitConfig {
 	// max ticks, unlimited if None (=100000)
 	pub t_max: Option<u64>,
 
-	pub kind: TempEnum
+	pub kind: TempEnum,
 }
 
 // #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -58,23 +61,23 @@ pub struct InitConfig {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Config {
 	// trait mutation probability (=0.01)
-	pub mutation_mu:          f64,
+	pub mutation_mu:     f64,
 	// expected mutational effect size (=0.01)
-	pub mutation_sigma:       f64,
+	pub mutation_sigma:  f64,
 	// bin size for mutational effects (=0.01)
-	pub mutation_step:        f64,
+	pub mutation_step:   f64,
 	// recombinational probality (=0.01)
-	pub rec:                  f64,
+	pub rec:             f64,
 	// maximum amount of offspring (=1000)
-	pub r_max:                f64,
+	pub r_max:           f64,
 	// selection strength (standard deviation)
-	pub selection_sigma:      f64,
+	pub selection_sigma: f64,
 	// generation overlap
-	pub gamma:                f64,
+	pub gamma:           f64,
 	// diploid or haploid
-	pub diploid:              bool,
+	pub diploid:         bool,
 	// dispersal parameter
-	pub m:                    f64,
+	pub m:               f64,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -89,10 +92,16 @@ impl State {
 		for patch in &self.patches {
 			let mut patch_success = Vec::with_capacity(patch.individuals.len());
 			for individual in &patch.individuals {
-				let offspring = r_max / (selection_sigma * (2.0 * PI).sqrt())
-					* (-(&patch.environment - individual.phenotype())
-					/ (2.0 * selection_sigma.powi(2)))
-					.exp();
+				// r(y, theta) = r_max*e^(-(theta - y)^2/(2*sigma^2)
+
+				// use std::f64::consts::PI;
+				// let offspring = ((r_max / (selection_sigma * (2.0*PI).sqrt())).ln()
+				// 	- ((&patch.environment - individual.phenotype()).powi(2)
+				// 		/ (2.0 * selection_sigma.powi(2)))).exp();
+				let offspring = (r_max.ln()
+					- ((&patch.environment - individual.phenotype()).powi(2)
+						/ (2.0 * selection_sigma.powi(2))))
+				.exp();
 				patch_success.push(offspring);
 			}
 			reproductive_success.push(patch_success);
@@ -136,16 +145,39 @@ impl State {
 		new_generation
 	}
 
-	pub fn recombination(new_generation: Vec<Vec<Individual>>) -> Vec<Vec<Individual>> {
-		// for patch in new_generation {
-		// 	for pair in patch {}
-		// }
-
-		// a b c d e f g h i j k l
-		// 0 1 0 0 1 0
-		// 0 1 1 1 2 2
-		// 1 0 0 0 1 1
-		// a g h i e f
+	pub fn recombination(
+		&self,
+		mut new_generation: Vec<Vec<Individual>>,
+		rec: f64,
+	) -> Vec<Vec<Individual>> {
+		let k = self.patches[0].individuals[0].loci.len() / 2; //TODO proper
+		// rec = 1-(1-locus_rec)^(k-1)
+		let locus_rec = 1.0 - (1.0 / (k as f64 - 1.0) * (1.0 - rec).ln()).exp();
+		let mut rng = thread_rng();
+		let distr = Bernoulli::new(locus_rec).unwrap();
+		let swapped = Bernoulli::new(0.5).unwrap();
+		for patch in &mut new_generation {
+			for individual in &mut *patch {
+				let (loci1, loci2) = individual.loci.split_at_mut(k);
+				let mut swapped = swapped.sample(&mut rng);
+				for (locus1, locus2) in loci1.iter_mut().zip(&*loci2) {
+					if distr.sample(&mut rng) {
+						swapped = !swapped;
+					}
+					if swapped {
+						*locus1 = *locus2;
+					}
+				}
+			}
+			for i in 0 .. patch.len() / 2 {
+				unsafe {
+					let individual = &mut *(patch.get_unchecked_mut(i) as *mut Individual);
+					individual.loci[.. k].copy_from_slice(&patch[2 * i].loci[.. k]);
+					individual.loci[k ..].copy_from_slice(&patch[(2 * i) + 1].loci[.. k]);
+				}
+			}
+			patch.resize(patch.len() / 2, Individual { loci: vec![] })
+		}
 		new_generation
 	}
 
@@ -215,7 +247,12 @@ impl State {
 pub fn init(init_config: InitConfig) -> Result<State, &'static str> {
 	Ok(State {
 		tick:    0,
-		patches: vec![Patch{environment: 0.01, individuals: vec![Individual{loci: vec![0.5, 0.7]}]}],
+		patches: vec![Patch {
+			environment: 0.5,
+			individuals: vec![Individual {
+				loci: vec![0.5, 0.7],
+			}],
+		}],
 	})
 }
 
@@ -225,7 +262,7 @@ pub fn step(state: &mut State, config: &Config) {
 	let death = state.adult_death(config.gamma);
 	let mut new_generation = state.density_regulation(&reproductive_success, &death);
 	if config.diploid {
-		new_generation = State::recombination(new_generation);
+		new_generation = state.recombination(new_generation, config.rec);
 	} else {
 		new_generation = State::haploid_generation(new_generation);
 	}
