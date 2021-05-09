@@ -1,12 +1,6 @@
 use core::ptr;
 use std::f64::consts::PI;
 
-use nalgebra::{DMatrix, DVector, DVectorSlice};
-use rand::{
-	distributions::{Bernoulli, Distribution, WeightedIndex},
-	thread_rng, Rng,
-};
-use serde::{Serialize, Deserialize};
 use itertools::izip;
 use rand::{prelude::SliceRandom, thread_rng, Rng};
 use rand_distr::{Bernoulli, Binomial, Distribution, Normal, WeightedIndex};
@@ -128,7 +122,18 @@ impl State {
 		new_generation
 	}
 
-	pub fn recombination() { todo!() }
+	pub fn recombination(new_generation: Vec<Vec<Individual>>) -> Vec<Vec<Individual>> {
+		// for patch in new_generation {
+		// 	for pair in patch {}
+		// }
+
+		// a b c d e f g h i j k l
+		// 0 1 0 0 1 0
+		// 0 1 1 1 2 2
+		// 1 0 0 0 1 1
+		// a g h i e f
+		new_generation
+	}
 
 	pub fn haploid_generation(mut new_generation: Vec<Vec<Individual>>) -> Vec<Vec<Individual>> {
 		for patch in &mut new_generation {
@@ -164,21 +169,21 @@ impl State {
 		let mut rng = thread_rng();
 		let distr = Bernoulli::new(mutation_mu).unwrap();
 		// fixed
-		let up_down = Bernoulli::new(0.5).unwrap();
+		// let up_down = Bernoulli::new(0.5).unwrap();
 		// gausian
-		// let up_down = Normal::new(0.0, mutation_sigma).unwrap();
+		let up_down = Normal::new(0.0, mutation_sigma).unwrap();
 		for patch in &mut new_generation {
 			for individual in patch {
 				for locus in &mut individual.loci {
 					// fixed
-					*locus += mutation_step
-						* 2.0 * (up_down.sample(&mut rng) as i32 as f64 - 0.5)
-						* distr.sample(&mut rng) as i32 as f64;
+					// *locus += mutation_step
+					// 	* 2.0 * (up_down.sample(&mut rng) as i32 as f64 - 0.5)
+					// 	* distr.sample(&mut rng) as i32 as f64;
 					// gaussian
-					// *locus += distr.sample(&mut rng) as i32 as f64
-					// 	* mutation_step * (up_down.sample(&mut rng) * mutation_sigma
-					// 	/ mutation_step)
-					// 	.round()
+					*locus += distr.sample(&mut rng) as i32 as f64
+						* mutation_step * (up_down.sample(&mut rng) * mutation_sigma
+						/ mutation_step)
+						.round()
 				}
 			}
 		}
@@ -205,7 +210,7 @@ pub fn step(state: &mut State, config: &Config) {
 	let death = state.adult_death(config.gamma);
 	let mut new_generation = state.density_regulation(&reproductive_success, &death);
 	if config.diploid {
-		State::recombination();
+		new_generation = State::recombination(new_generation);
 	} else {
 		new_generation = State::haploid_generation(new_generation);
 	}
