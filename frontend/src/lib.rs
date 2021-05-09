@@ -15,9 +15,9 @@ use std::future::Future;
 #[derive(Debug)]
 pub enum Msg {
 	Config(crate::forms::config::Msg),
-	Query(Result<State, &'static str>),
+	Query(Result<State, String>),
 	Delete(usize),
-	Result(Result<(), &'static str>),
+	Result(Result<(), String>),
 }
 
 struct Model {
@@ -26,20 +26,8 @@ struct Model {
 	started: bool,
 	crashed: bool, // a bool indicating something has gone horribly wrong and everything needs to be reset
 
-	messages: HashMap<usize, &'static str>,
+	messages: HashMap<usize, String>,
 	current_id: usize,
-}
-
-// very dirty trick to make the order code look good
-pub fn order<F: Future<Output = ()> + 'static>(
-	f: impl FnOnce() -> F + 'static,
-	orders: &mut impl Orders<Msg>,
-) {
-	orders.skip().perform_cmd(async move {
-		f().await;
-		let t: Option<Msg> = None;
-		t
-	});
 }
 
 fn init(_: Url, _: &mut impl Orders<Msg>) -> Model {
@@ -53,7 +41,7 @@ fn init(_: Url, _: &mut impl Orders<Msg>) -> Model {
 	}
 }
 
-fn handle_error(model: &mut Model, error: &'static str) {
+fn handle_error(model: &mut Model, error: String) {
 	model.messages.insert(model.current_id, error);
 	model.current_id += 1;
 	model.crashed = true;
@@ -66,7 +54,7 @@ fn update(msg: Msg, model: &mut Model, orders: &mut impl Orders<Msg>) {
 		Msg::Config(msg) => match model.config.update(msg, &mut orders.proxy(Msg::Config)) {
 			Action::Start(initial, config) => {
 				orders.perform_cmd(async {
-					cmds::timeout(5000, || ()).await;
+					cmds::timeout(100, || ()).await;
 					Msg::Query(api::query().await)
 				});
 				orders.perform_cmd(async { Msg::Result(api::start((initial, config)).await) });
@@ -90,14 +78,14 @@ fn update(msg: Msg, model: &mut Model, orders: &mut impl Orders<Msg>) {
 
 				if model.started {
 					orders.perform_cmd(async {
-						cmds::timeout(5000, || ()).await;
+						cmds::timeout(100, || ()).await;
 						Msg::Query(api::query().await)
 					});
 				}
 
 				model.history.push(state);
 				simple::draw("canvas", &model.history).expect("could not draw");
-			}
+			},
 			Err(err) => {
 				log!("i'm here it failed", err);
 				handle_error(model, err);
@@ -119,7 +107,7 @@ fn update(msg: Msg, model: &mut Model, orders: &mut impl Orders<Msg>) {
 	}
 }
 
-fn view_messages(messages: &HashMap<usize, &'static str>) -> Vec<Node<Msg>> {
+fn view_messages(messages: &HashMap<usize, String>) -> Vec<Node<Msg>> {
 	messages
 		.iter()
 		.map(|(id, msg)| {
@@ -127,7 +115,7 @@ fn view_messages(messages: &HashMap<usize, &'static str>) -> Vec<Node<Msg>> {
 			div![
 				C!["notification"],
 				button![C!["delete"], ev(Ev::Click, move |_| Msg::Delete(copy))],
-				msg
+				&msg
 			]
 		})
 		.collect()
