@@ -57,7 +57,7 @@ impl Field for SliderField {
 				C!["control"],
 				input![
 					C!["slider"],
-					attrs! {At::Min => 0, At::Max => 0, At::Type => "range"},
+					attrs! {At::Min => 0, At::Max => 100, At::Type => "range"},
 					input_ev(Ev::Input, |str| str.parse::<f64>().ok()),
 				]
 			]

@@ -7,8 +7,7 @@ use rocket::State;
 use rocket_contrib::{json::Json, serve::StaticFiles};
 use rocket_cors::CorsOptions;
 use serde::{Deserialize, Serialize};
-// use simulation::{init, step, Config, InitConfig};
-use simulation::{Config, InitConfig};
+use simulation::{init, step, Config, InitConfig};
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 struct Data {
@@ -19,25 +18,25 @@ struct Data {
 struct Inner {
 	pub config: Config,
 	pub values: Vec<Data>,
+	pub state: simulation::State,
 	pub killer: mpsc::Sender<()>,
 }
 
 type Shared = Arc<Mutex<Option<Inner>>>;
 
-fn simulate(initial: InitConfig, shared: Shared, kill: mpsc::Receiver<()>) {
-	let ticks = initial.t_max.unwrap_or(u64::MAX);
-	// let mut state = init(initial).unwrap();
-
+fn simulate(ticks: u64, shared: Shared, kill: mpsc::Receiver<()>) {
 	for _ in 0..ticks {
-		if let Err(_) = kill.try_recv() {
-			return;
+		match kill.try_recv() {
+			Err(mpsc::TryRecvError::Empty) => (),
+			_ => return,
 		}
 
 		match shared.lock().unwrap().as_mut() {
 			Some(inner) => {
-				// step(&mut state, &inner.config);
-				// state.tick += 1;
+				step(&mut inner.state, &inner.config);
+				inner.state.tick += 1;
 
+				println!("step");
 				inner.values.push(Data {
 					size: 5.,
 					phenotype: 2.,
@@ -51,59 +50,68 @@ fn simulate(initial: InitConfig, shared: Shared, kill: mpsc::Receiver<()>) {
 fn start(initial: InitConfig, config: Config, shared: &Shared) {
 	let (sender, receiver) = mpsc::channel();
 
+	let ticks = initial.t_max.unwrap_or(u64::MAX);
 	let inner = Inner {
 		config,
 		values: vec![],
 		killer: sender,
+		state: init(initial).unwrap(),
 	};
 	shared.lock().unwrap().get_or_insert(inner);
+	eprintln!("{}", shared.lock().unwrap().is_some());
 	let cloned = shared.clone();
 
-	std::thread::spawn(move || simulate(initial, cloned, receiver));
+	std::thread::spawn(move || simulate(ticks, cloned, receiver));
+	eprintln!("stared thread");
 }
 
-// #[post("/start", data = "<pair>")]
-// fn start_route(pair: Json<(InitConfig, Config)>, shared: State<Shared>) -> &'static str {
-// 	let result = shared
-// 		.lock()
-// 		.unwrap()
-// 		.as_ref()
-// 		.map(|_| "already running")
-// 		.unwrap_or_default();
-//
-// 	// double lock of mutex in one function
-// 	let (initial, config) = pair.into_inner();
-// 	start(initial, config, shared.inner());
-//
-// 	result
-// }
+#[post("/start", data = "<pair>")]
+fn start_route(pair: Json<(InitConfig, Config)>, shared: State<Shared>) -> &'static str {
+	let result = shared
+		.lock()
+		.unwrap()
+		.as_ref()
+		.map(|_| "already running")
+		.unwrap_or_default();
 
-// #[post("/stop")]
-// fn stop_route(shared: State<Shared>) -> String {
-// 	match &mut *shared.lock().unwrap() {
-// 		Some(Inner { killer, .. }) => killer.send(()).unwrap(),
-// 		None => return "not running".to_string(),
-// 	}
-// 	String::new()
-// }
+	// double lock of mutex in one function
+	let (initial, config) = pair.into_inner();
+	start(initial, config, shared.inner());
 
-// #[post("/update", data = "<config>")]
-// fn update_route(config: Json<Config>, shared: State<Shared>) -> String {
-// 	match &mut *shared.lock().unwrap() {
-// 		Some(inner) => inner.config = config.into_inner(),
-// 		None => return "not running".to_string(),
-// 	}
-// 	String::new()
-// }
+	result
+}
+
+#[post("/stop")]
+fn stop_route(shared: State<Shared>) -> String {
+	match &mut *shared.lock().unwrap() {
+		Some(Inner { killer, .. }) => killer.send(()).unwrap(),
+		None => return "not running".to_string(),
+	}
+	String::new()
+}
+
+#[post("/update", data = "<config>")]
+fn update_route(config: Json<Config>, shared: State<Shared>) -> String {
+	match &mut *shared.lock().unwrap() {
+		Some(inner) => inner.config = config.into_inner(),
+		None => return "not running".to_string(),
+	}
+	String::new()
+}
+
+#[get("/query")]
+fn query_route(shared: State<Shared>) -> Option<Json<simulation::State>> {
+	shared.lock().unwrap().as_ref().map(|inner| Json(inner.state.clone()))
+}
 
 #[tokio::main]
 async fn main() -> Result<(), rocket::error::Error> {
-	// let routes = routes![start_route, stop_route, update_route];
+	let routes = routes![start_route, stop_route, update_route, query_route];
 	let managed: Shared = Arc::new(Mutex::default());
 
 	rocket::build()
 		.attach(CorsOptions::default().to_cors().unwrap())
-		// .mount("/api", routes)
+		.mount("/api", routes)
 		.mount("/", StaticFiles::from("static"))
 		.manage(managed)
 		.launch()

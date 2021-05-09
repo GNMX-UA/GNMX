@@ -28,6 +28,7 @@ impl SelectField {
     pub fn new(label: &'static str, suggestions: Suggestions, default: bool) -> Self {
         Self {
             label,
+            value: suggestions.first().map(|x| x.value),
             suggestions,
             default,
             ..Default::default()

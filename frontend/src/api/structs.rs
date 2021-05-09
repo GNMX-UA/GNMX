@@ -13,16 +13,29 @@ pub struct Patch {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
+pub enum TempEnum {
+    Default
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct InitConfig {
     // max ticks, unlimited if None (=100000)
     pub t_max: Option<u64>,
 
-    pub population_size: u64,
-    pub population_type: i64,
-
-    pub environment_size: u64,
-    pub environment_type: i64,
+    pub kind: TempEnum
 }
+
+// #[derive(Clone, Debug, Serialize, Deserialize)]
+// pub struct InitConfig {
+//     // max ticks, unlimited if None (=100000)
+//     pub t_max: Option<u64>,
+//
+//     pub population_size: u64,
+//     pub population_type: i64,
+//
+//     pub patch_amount: u64,
+//     pub patch_type: i64,
+// }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Config {

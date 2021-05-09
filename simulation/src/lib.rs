@@ -4,6 +4,7 @@ use std::f64::consts::PI;
 use itertools::izip;
 use rand::{prelude::SliceRandom, thread_rng, Rng};
 use rand_distr::{Bernoulli, Binomial, Distribution, Normal, WeightedIndex};
+use serde::{Serialize, Deserialize};
 
 // possible extensions:
 // no juvenile/adult carrying capacity (= 1/n)
@@ -14,7 +15,7 @@ use rand_distr::{Bernoulli, Binomial, Distribution, Normal, WeightedIndex};
 // dispersal chance not equal (no pool)
 // TODO don't scale by sqrt(2pi)
 
-#[derive(Clone)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Individual {
 	loci: Vec<f64>,
 }
@@ -23,24 +24,38 @@ impl Individual {
 	fn phenotype(&self) -> f64 { self.loci.iter().sum() }
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Patch {
-	environment: f64,
-	individuals: Vec<Individual>,
+	pub environment: f64,
+	pub individuals: Vec<Individual>,
 }
 
 impl Patch {}
 
-// #[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub enum TempEnum {
+	Default
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct InitConfig {
 	// max ticks, unlimited if None (=100000)
-	pub t_max:   Option<u64>,
-	// population size can change (=6000)
-	// number of loci (half if diploid) cannot change (=4)
-	// patch number cannot change
-	pub patches: Vec<Patch>,
+	pub t_max: Option<u64>,
+
+	pub kind: TempEnum
 }
 
 // #[derive(Clone, Debug, Serialize, Deserialize)]
+// pub struct InitConfig {
+// 	// max ticks, unlimited if None (=100000)
+// 	pub t_max:   Option<u64>,
+// 	// population size can change (=6000)
+// 	// number of loci (half if diploid) cannot change (=4)
+// 	// patch number cannot change
+// 	pub patches: Vec<Patch>,
+// }
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Config {
 	// trait mutation probability (=0.01)
 	pub mutation_mu:          f64,
@@ -60,13 +75,12 @@ pub struct Config {
 	pub diploid:              bool,
 	// dispersal parameter
 	pub m:                    f64,
-	// function to determine environment and selective optima
-	pub environment_function: fn(&mut Vec<Patch>, u64),
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct State {
-	tick:    u64,
-	patches: Vec<Patch>,
+	pub tick:    u64,
+	pub patches: Vec<Patch>,
 }
 
 impl State {
@@ -200,12 +214,12 @@ impl State {
 pub fn init(init_config: InitConfig) -> Result<State, &'static str> {
 	Ok(State {
 		tick:    0,
-		patches: init_config.patches,
+		patches: vec![Patch{environment: 0.01, individuals: vec![Individual{loci: vec![0.5, 0.7]}]}],
 	})
 }
 
 pub fn step(state: &mut State, config: &Config) {
-	(config.environment_function)(&mut state.patches, state.tick);
+	// (config.environment_function)(&mut state.patches, state.tick);
 	let reproductive_success = state.reproduction(config.r_max, config.selection_sigma);
 	let death = state.adult_death(config.gamma);
 	let mut new_generation = state.density_regulation(&reproductive_success, &death);

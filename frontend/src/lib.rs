@@ -33,6 +33,13 @@ pub fn order<F: Future<Output = ()> + 'static>(f: impl FnOnce() -> F + 'static, 
     });
 }
 
+async fn loop_query() {
+    loop {
+        cmds::timeout(5000, ||()).await;
+        query().await.map(Msg::Query);
+    }
+}
+
 fn init(_: Url, _: &mut impl Orders<Msg>) -> Model {
     Model {
         config: ConfigForm::new(),
@@ -45,10 +52,7 @@ fn update(msg: Msg, model: &mut Model, orders: &mut impl Orders<Msg>) {
     match msg {
         Msg::Config(msg) => match model.config.update(msg, &mut orders.proxy(Msg::Config)) {
             Action::Start(initial, config) => {
-                model.handle = Some(orders.perform_cmd_with_handle(async {
-                    cmds::timeout(100, ||()).await;
-                    query().await.map(Msg::Query)
-                }));
+                model.handle = Some(orders.perform_cmd_with_handle(loop_query()));
                 order(move || api::start((initial, config)), orders)
             },
             Action::Update(config) => order(move || api::update(config), orders),
@@ -60,6 +64,7 @@ fn update(msg: Msg, model: &mut Model, orders: &mut impl Orders<Msg>) {
         },
 
         Msg::Query(state) => {
+            log!(state);
             model.history.push(state);
             simple::draw("canvas", &model.history).expect("could not draw");
         }
