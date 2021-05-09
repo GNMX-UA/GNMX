@@ -2,7 +2,7 @@ use core::ptr;
 
 use itertools::izip;
 use rand::{prelude::SliceRandom, thread_rng, Rng};
-use rand_distr::{Bernoulli, Binomial, Distribution, Normal, WeightedIndex};
+use rand_distr::{Bernoulli, Binomial, Distribution, Normal, WeightedAliasIndex};
 use serde::{Deserialize, Serialize};
 
 // TODO juvenile/adult
@@ -118,24 +118,30 @@ impl State {
 				.unwrap()
 				.sample(&mut rng) as usize;
 			death.push(patch.individuals.len() - patch_alive);
-			patch
-				.individuals
-				.resize(patch_alive, Individual { loci: vec![] });
+			// TODO add back in
+			// patch
+			// 	.individuals
+			// 	.resize(patch_alive, Individual { loci: vec![] });
 		}
 		death
 	}
 
 	pub fn density_regulation(
 		&self,
-		reproductive_success: &Vec<Vec<f64>>,
+		mut reproductive_success: Vec<Vec<f64>>,
 		death: &Vec<usize>,
 	) -> Vec<Vec<Individual>> {
 		let mut new_generation = Vec::with_capacity(self.patches.len());
 		for (patch, patch_success, patch_death) in izip!(&self.patches, reproductive_success, death)
 		{
+			let distr = if patch_success.iter().sum::<f64>() > 0.0 {
+				// TODO vec empty
+				WeightedAliasIndex::new(patch_success).unwrap()
+			} else {
+				WeightedAliasIndex::new(vec![1.0; patch_success.len()]).unwrap()
+			};
 			new_generation.push(
-				WeightedIndex::new(patch_success)
-					.unwrap()
+				distr
 					.sample_iter(thread_rng())
 					.take(2 * patch_death)
 					.map(|index| patch.individuals[index].clone())
@@ -260,7 +266,7 @@ pub fn step(state: &mut State, config: &Config) {
 	// (config.environment_function)(&mut state.patches, state.tick);
 	let reproductive_success = state.reproduction(config.r_max, config.selection_sigma);
 	let death = state.adult_death(config.gamma);
-	let mut new_generation = state.density_regulation(&reproductive_success, &death);
+	let mut new_generation = state.density_regulation(reproductive_success, &death);
 	if config.diploid {
 		new_generation = state.recombination(new_generation, config.rec);
 	} else {
@@ -273,6 +279,11 @@ pub fn step(state: &mut State, config: &Config) {
 		config.mutation_sigma,
 		config.mutation_step,
 	);
+	for (patch, death) in state.patches.iter_mut().zip(death) {
+		patch
+			.individuals
+			.resize(patch.individuals.len() - death, Individual { loci: vec![] });
+	}
 	state.update(new_generation);
 }
 
