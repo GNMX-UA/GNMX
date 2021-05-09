@@ -5,7 +5,7 @@ use serde::{Serialize, Deserialize};
 
 use crate::api::{Config, InitConfig, State};
 
-async fn post(url: &str, data: &impl Serialize) -> Result<String, &'static str> {
+async fn post(url: &str, data: &impl Serialize) -> Result<(), &'static str> {
 	Request::new(format!("http://localhost:8000/{}", url))
 		.method(Method::Post)
 		.json(data)
@@ -14,10 +14,8 @@ async fn post(url: &str, data: &impl Serialize) -> Result<String, &'static str> 
 		.await
 		.map_err(|_| "Could not execute request")?
 		.check_status()
-		.map_err(|_| "Response doesn't have 2xx status")?
-		.text()
-		.await
-		.map_err(|_| "Could not parse response to string")
+		.map_err(|_| "Response doesn't have 2xx status")
+		.map(|_|())
 }
 
 async fn get<T:  DeserializeOwned + 'static>(url: &str) -> Result<T, &'static str> {
@@ -33,18 +31,18 @@ async fn get<T:  DeserializeOwned + 'static>(url: &str) -> Result<T, &'static st
 		.map_err(|_| "Could not parse response to json")
 }
 
-pub async fn start(pair: (InitConfig, Config)) {
-	log!(post("api/start", &pair).await)
+pub async fn start(pair: (InitConfig, Config)) -> Result<(), &'static str> {
+	post("api/start", &pair).await
 }
 
-pub async fn stop() {
-	log!(post("api/stop", &()).await)
+pub async fn stop() -> Result<(), &'static str> {
+	post("api/stop", &()).await
 }
 
-pub async fn update(config: Config) {
-	log!(post("api/update", &config).await)
+pub async fn update(config: Config) -> Result<(), &'static str> {
+	post("api/update", &config).await
 }
 
-pub async fn query() -> Option<State> {
-	get("api/query").await.ok()
+pub async fn query() -> Result<State, &'static str> {
+	get("api/query").await
 }

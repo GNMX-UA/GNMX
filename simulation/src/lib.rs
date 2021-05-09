@@ -211,6 +211,7 @@ impl State {
 	}
 }
 
+// TODO: remove result probably
 pub fn init(init_config: InitConfig) -> Result<State, &'static str> {
 	Ok(State {
 		tick:    0,

@@ -9,6 +9,11 @@ use rocket_cors::CorsOptions;
 use serde::{Deserialize, Serialize};
 use simulation::{init, step, Config, InitConfig};
 
+static POISON_ERROR: &str = "The simulation thread crashed and poisoned the simulation, this is an internal error";
+static ALREADY_STARTED_ERROR: &str = "The simulation was already started, ignoring request";
+static NOT_STARTED_ERROR: &str = "The simulation was not yet started, ignoring request";
+static SETUP_FAILED: &str = "Simulation setup failed, this is an internal error";
+
 #[derive(Serialize, Deserialize, Clone, Debug)]
 struct Data {
 	pub size: f32,
@@ -36,13 +41,12 @@ fn simulate(ticks: u64, shared: Shared, kill: mpsc::Receiver<()>) {
 				step(&mut inner.state, &inner.config);
 				inner.state.tick += 1;
 
-				println!("step");
 				inner.values.push(Data {
 					size: 5.,
 					phenotype: 2.,
 				})
 			}
-			None => warn!("try to simulate without initial setup"),
+			None => warn!("{}", SETUP_FAILED),
 		}
 	}
 }
@@ -57,51 +61,63 @@ fn start(initial: InitConfig, config: Config, shared: &Shared) {
 		killer: sender,
 		state: init(initial).unwrap(),
 	};
-	shared.lock().unwrap().get_or_insert(inner);
-	eprintln!("{}", shared.lock().unwrap().is_some());
-	let cloned = shared.clone();
 
+	if let Ok(mut lock) = shared.lock() {
+		lock.get_or_insert(inner);
+	}
+
+	let cloned = shared.clone();
 	std::thread::spawn(move || simulate(ticks, cloned, receiver));
-	eprintln!("stared thread");
 }
 
 #[post("/start", data = "<pair>")]
-fn start_route(pair: Json<(InitConfig, Config)>, shared: State<Shared>) -> &'static str {
-	let result = shared
-		.lock()
-		.unwrap()
-		.as_ref()
-		.map(|_| "already running")
-		.unwrap_or_default();
+fn start_route(
+	pair: Json<(InitConfig, Config)>,
+	shared: State<Shared>,
+) -> Result<(), &'static str> {
+	let result = match *shared.lock().map_err(|_| POISON_ERROR)? {
+		None => Ok(()),
+		Some(_) => Err(ALREADY_STARTED_ERROR),
+	};
 
-	// double lock of mutex in one function
-	let (initial, config) = pair.into_inner();
-	start(initial, config, shared.inner());
+	if result.is_ok() {
+		let (initial, config) = pair.into_inner();
+		start(initial, config, shared.inner());
+	}
 
 	result
 }
 
 #[post("/stop")]
-fn stop_route(shared: State<Shared>) -> String {
-	match &mut *shared.lock().unwrap() {
-		Some(Inner { killer, .. }) => killer.send(()).unwrap(),
-		None => return "not running".to_string(),
+fn stop_route(shared: State<Shared>) -> Result<(), &'static str> {
+	match &mut *shared.lock().map_err(|_| POISON_ERROR)? {
+		Some(inner) => {
+			inner.killer.send(()).map_err(|_| POISON_ERROR)?;
+			Ok(())
+		}
+		None => Err(NOT_STARTED_ERROR),
 	}
-	String::new()
 }
 
 #[post("/update", data = "<config>")]
-fn update_route(config: Json<Config>, shared: State<Shared>) -> String {
-	match &mut *shared.lock().unwrap() {
-		Some(inner) => inner.config = config.into_inner(),
-		None => return "not running".to_string(),
+fn update_route(config: Json<Config>, shared: State<Shared>) -> Result<(), &'static str> {
+	match &mut *shared.lock().map_err(|_| POISON_ERROR)? {
+		Some(inner) => {
+			inner.config = config.into_inner();
+			Ok(())
+		}
+		None => Err(NOT_STARTED_ERROR),
 	}
-	String::new()
 }
 
 #[get("/query")]
-fn query_route(shared: State<Shared>) -> Option<Json<simulation::State>> {
-	shared.lock().unwrap().as_ref().map(|inner| Json(inner.state.clone()))
+fn query_route(shared: State<Shared>) -> Result<Json<simulation::State>, &'static str> {
+	match shared.lock() {
+		Ok(lock) => lock.as_ref()
+			.map(|inner| Json(inner.state.clone()))
+			.ok_or(NOT_STARTED_ERROR),
+		Err(_) => Err(POISON_ERROR),
+	}
 }
 
 #[tokio::main]

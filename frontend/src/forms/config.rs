@@ -99,7 +99,7 @@ impl ConfigForm {
 			r_max: InputField::new("Max amount of offspring", false).with_initial(Some(1000.)),
 			selection_sigma: InputField::new("Selection Strength (Sigma)", false).with_initial(Some(0.01)),
 			gamma: InputField::new("Generation Overlap (Gamma)", false).with_initial(Some(0.01)),
-			diploid: InputField::new("Diploid", false).with_initial(Some(true)),
+			diploid: InputField::new("Diploid", false).with_initial(Some(false)),
 			m: InputField::new("Dispersal parameter (M)", false).with_initial(Some(0.01)),
 			start: Button::new("start", "is-success", "fa-play", || Msg::Start),
 			update: Button::new("update", "is-link", "fa-wrench", || Msg::Update),
@@ -167,6 +167,10 @@ impl ConfigForm {
 			_ => unreachable!("all other cases must be handled in previous match"),
 		}
 		Action::None
+	}
+
+	pub fn stop(&mut self) {
+		self.started = false;
 	}
 
 	fn extract_initial(&self) -> Option<InitConfig> {
