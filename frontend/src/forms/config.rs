@@ -5,8 +5,6 @@ use crate::components::Button;
 use crate::fields::slider::SliderField;
 use crate::fields::{Field, InputField, SelectField};
 use seed::futures::StreamExt;
-use std::cell::RefCell;
-use crate::fields::sliderbox::SliderBoxField;
 
 #[derive(Clone, Debug)]
 pub enum Msg {
@@ -21,10 +19,10 @@ pub enum Msg {
 	MutationStep(<SliderField as Field>::Msg),
 	Rec(<SliderField as Field>::Msg),
 	RMax(<InputField<f64> as Field>::Msg),
-	SelectionSigma(<InputField<f64> as Field>::Msg),
-	Gamma(<InputField<f64> as Field>::Msg),
+	SelectionSigma(<SliderField as Field>::Msg),
+	Gamma(<SliderField as Field>::Msg),
 	Diploid(<InputField<bool> as Field>::Msg),
-	M(<InputField<f64> as Field>::Msg),
+	M(<SliderField as Field>::Msg),
 
 	Start,
 	Update,
@@ -45,10 +43,10 @@ pub struct ConfigForm {
 	mutation_step: SliderField,
 	rec: SliderField,
 	r_max: InputField<f64>,
-	selection_sigma: InputField<f64>,
-	gamma: InputField<f64>,
+	selection_sigma: SliderField,
+	gamma: SliderField,
 	diploid: InputField<bool>,
-	m: InputField<f64>,
+	m: SliderField,
 
 	// buttons
 	start: Button<Msg>,
@@ -93,15 +91,15 @@ impl ConfigForm {
 			patch_amount: InputField::new("Patch amount", false).with_initial(Some(2)),
 			patch_type: SelectField::new("Type", env_type, false),
 
-			mutation_mu: SliderField::new("Mutation Mu", 0.0..1.0, 0.01),
-			mutation_sigma: SliderField::new("Mutation Sigma", 0.0..1.0, 0.01),
-			mutation_step: SliderField::new("Mutation Step", 0.0..1.0, 0.01),
-			rec: SliderField::new("Recombinational probability", 0.0..1.0, 0.01),
+			mutation_mu: SliderField::new("Mutation Mu", 0.0..1., 0.01),
+			mutation_sigma: SliderField::new("Mutation Sigma", 0.0..1., 0.01),
+			mutation_step: SliderField::new("Mutation Step", 0.01..1., 0.01),
+			rec: SliderField::new("Recombinational probability", 0.0..1., 0.01),
 			r_max: InputField::new("Max amount of offspring", false).with_initial(Some(1000.)),
-			selection_sigma: InputField::new("Selection Strength (Sigma)", false).with_initial(Some(0.01)),
-			gamma: InputField::new("Generation Overlap (Gamma)", false).with_initial(Some(0.01)),
+			selection_sigma: SliderField::new("Selection Strength (Sigma)", 0.01..1., 0.01),
+			gamma: SliderField::new("Generation Overlap (Gamma)", 0.0..1., 0.01),
 			diploid: InputField::new("Diploid", false).with_initial(Some(false)),
-			m: InputField::new("Dispersal parameter (M)", false).with_initial(Some(0.01)),
+			m: SliderField::new("Dispersal parameter (M)", 0.0..1., 0.01),
 			start: Button::new("start", "is-success", "fa-play", || Msg::Start),
 			update: Button::new("update", "is-link", "fa-wrench", || Msg::Update),
 			stop: Button::new("stop", "is-danger is-outline", "fa-times", || Msg::Stop),
@@ -272,7 +270,7 @@ impl ConfigForm {
 			self.diploid.view(false).map_msg(Msg::Diploid),
 			self.m.view(false).map_msg(Msg::M),
 			div![
-				C!["buttons"],
+				C!["buttons pt-4"],
 				self.start.view(self.started),
 				self.update.view(!self.started),
 				self.stop.view(!self.started)
