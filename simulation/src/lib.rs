@@ -219,23 +219,23 @@ impl State {
 		mutation_step: f64,
 	) -> Vec<Vec<Individual>> {
 		let mut rng = thread_rng();
+
 		let distr = Bernoulli::new(mutation_mu).unwrap();
 		// fixed
 		// let up_down = Bernoulli::new(0.5).unwrap();
-		// gausian
+		// normal
 		let up_down = Normal::new(0.0, mutation_sigma).unwrap();
+
 		for patch in &mut new_generation {
 			for individual in patch {
 				for locus in &mut individual.loci {
-					// fixed
-					// *locus += mutation_step
-					// 	* 2.0 * (up_down.sample(&mut rng) as i32 as f64 - 0.5)
-					// 	* distr.sample(&mut rng) as i32 as f64;
-					// gaussian
-					*locus += distr.sample(&mut rng) as i32 as f64
-						* mutation_step * (up_down.sample(&mut rng) * mutation_sigma
-						/ mutation_step)
-						.round()
+					if distr.sample(&mut rng) {
+						// fixed
+						// *locus +=
+						// 	2.0 * mutation_step * (up_down.sample(&mut rng) as i32 as f64 - 0.5);
+						// normal
+						*locus += mutation_step * (up_down.sample(&mut rng) / mutation_step).round()
+					}
 				}
 			}
 		}
