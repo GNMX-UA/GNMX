@@ -11,6 +11,7 @@ serde = { version = "1.0", features = ["derive"] }
 rand = "*"
 rand_distr = "*"
 itertools = "*"
+tinyvec = { versoin = "*", features = ["alloc", "serde"]}
 
 #[profile.debug]
 #opt-level=3

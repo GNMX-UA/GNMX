@@ -1,13 +1,14 @@
 use core::ptr;
 
 use itertools::izip;
+use patch::Patch;
 use rand::{prelude::SliceRandom, thread_rng, Rng};
 use rand_distr::{Bernoulli, Binomial, Distribution, Normal, WeightedAliasIndex};
 use serde::{Deserialize, Serialize};
+use tinyvec::{tiny_vec, TinyVec};
 
 // TODO juvenile/adult
 // TODO dispersal matrix
-// TODO Vec<Individu>
 // TODO init
 
 // possible extensions:
@@ -18,22 +19,41 @@ use serde::{Deserialize, Serialize};
 // theta vector
 // phenotype is not sum -> use inner product
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, Default)]
 pub struct Individual {
-	loci: Vec<f64>,
+	loci: TinyVec<[f64; 10]>,
 }
 
 impl Individual {
 	fn phenotype(&self) -> f64 { self.loci.iter().sum() }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct Patch {
-	pub environment: f64,
-	pub individuals: Vec<Individual>,
-}
+mod patch {
+	use std::ops::{Deref, DerefMut};
 
-impl Patch {}
+	use super::*;
+
+	#[derive(Clone, Debug, Serialize, Deserialize)]
+	pub struct Patch {
+		individuals: Vec<Individual>,
+	}
+
+	impl Patch {
+		pub fn new(individuals: Vec<Individual>) -> Patch { Self { individuals } }
+
+		pub fn extend(&mut self, other: Patch) { self.individuals.extend(other.individuals); }
+	}
+
+	impl Deref for Patch {
+		type Target = Vec<Individual>;
+
+		fn deref(&self) -> &Self::Target { &self.individuals }
+	}
+
+	impl DerefMut for Patch {
+		fn deref_mut(&mut self) -> &mut Self::Target { &mut self.individuals }
+	}
+}
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum TempEnum {
@@ -83,15 +103,15 @@ pub struct Config {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct State {
 	pub tick:    u64,
-	pub patches: Vec<Patch>,
+	pub patches: Vec<(Patch, f64)>,
 }
 
 impl State {
 	pub fn reproduction(&self, r_max: f64, selection_sigma: f64) -> Vec<Vec<f64>> {
 		let mut reproductive_success = Vec::with_capacity(self.patches.len());
-		for patch in &self.patches {
-			let mut patch_success = Vec::with_capacity(patch.individuals.len());
-			for individual in &patch.individuals {
+		for (patch, env) in &self.patches {
+			let mut patch_success = Vec::with_capacity(patch.len());
+			for individual in &**patch {
 				// r(y, theta) = r_max*e^(-(theta - y)^2/(2*sigma^2)
 
 				// use std::f64::consts::PI;
@@ -99,8 +119,7 @@ impl State {
 				// 	- ((&patch.environment - individual.phenotype()).powi(2)
 				// 		/ (2.0 * selection_sigma.powi(2)))).exp();
 				let offspring = (r_max.ln()
-					- ((&patch.environment - individual.phenotype()).powi(2)
-						/ (2.0 * selection_sigma.powi(2))))
+					- ((env - individual.phenotype()).powi(2) / (2.0 * selection_sigma.powi(2))))
 				.exp();
 				patch_success.push(offspring);
 			}
@@ -112,12 +131,12 @@ impl State {
 	pub fn adult_death(&mut self, gamma: f64) -> Vec<usize> {
 		let mut rng = thread_rng();
 		let mut death = Vec::with_capacity(self.patches.len());
-		for patch in &mut self.patches {
-			patch.individuals.shuffle(&mut rng);
-			let patch_alive = Binomial::new(patch.individuals.len() as u64, gamma)
+		for (patch, _) in &mut self.patches {
+			patch.shuffle(&mut rng);
+			let patch_alive = Binomial::new(patch.len() as u64, gamma)
 				.unwrap()
 				.sample(&mut rng) as usize;
-			death.push(patch.individuals.len() - patch_alive);
+			death.push(patch.len() - patch_alive);
 			// TODO add back in
 			// patch
 			// 	.individuals
@@ -130,9 +149,10 @@ impl State {
 		&self,
 		reproductive_success: Vec<Vec<f64>>,
 		death: &Vec<usize>,
-	) -> Vec<Vec<Individual>> {
+	) -> Vec<Patch> {
 		let mut new_generation = Vec::with_capacity(self.patches.len());
-		for (patch, patch_success, patch_death) in izip!(&self.patches, reproductive_success, death)
+		for ((patch, _), patch_success, patch_death) in
+			izip!(&self.patches, reproductive_success, death)
 		{
 			let distr = if patch_success.iter().sum::<f64>() > 0.0 {
 				// TODO vec empty
@@ -140,30 +160,26 @@ impl State {
 			} else {
 				WeightedAliasIndex::new(vec![1.0; patch_success.len()]).unwrap()
 			};
-			new_generation.push(
+			new_generation.push(Patch::new(
 				distr
 					.sample_iter(thread_rng())
 					.take(2 * patch_death)
-					.map(|index| patch.individuals[index].clone())
+					.map(|index| patch[index].clone())
 					.collect(),
-			);
+			));
 		}
 		new_generation
 	}
 
-	pub fn recombination(
-		&self,
-		mut new_generation: Vec<Vec<Individual>>,
-		rec: f64,
-	) -> Vec<Vec<Individual>> {
-		let k = self.patches[0].individuals[0].loci.len() / 2; //TODO proper
+	pub fn recombination(&self, mut new_generation: Vec<Patch>, rec: f64) -> Vec<Patch> {
+		let k = self.patches[0].0[0].loci.len() / 2; //TODO proper
 		// rec = 1-(1-locus_rec)^(k-1)
 		let locus_rec = 1.0 - (1.0 / (k as f64 - 1.0) * (1.0 - rec).ln()).exp();
 		let mut rng = thread_rng();
 		let distr = Bernoulli::new(locus_rec).unwrap();
 		let swapped = Bernoulli::new(0.5).unwrap();
 		for patch in &mut new_generation {
-			for individual in &mut *patch {
+			for individual in &mut **patch {
 				let (loci1, loci2) = individual.loci.split_at_mut(k);
 				let mut swapped = swapped.sample(&mut rng);
 				for (locus1, locus2) in loci1.iter_mut().zip(&*loci2) {
@@ -175,30 +191,43 @@ impl State {
 					}
 				}
 			}
-			for i in 0 .. patch.len() / 2 {
+			let len = patch.len() / 2;
+			for i in 0 .. len {
 				unsafe {
 					let individual = &mut *(patch.get_unchecked_mut(i) as *mut Individual);
 					individual.loci[.. k].copy_from_slice(&patch[2 * i].loci[.. k]);
 					individual.loci[k ..].copy_from_slice(&patch[(2 * i) + 1].loci[.. k]);
 				}
 			}
-			patch.resize(patch.len() / 2, Individual { loci: vec![] })
+			patch.resize(
+				len / 2,
+				Individual {
+					loci: Default::default(),
+				},
+			)
 		}
 		new_generation
 	}
 
-	pub fn haploid_generation(mut new_generation: Vec<Vec<Individual>>) -> Vec<Vec<Individual>> {
+	pub fn haploid_generation(mut new_generation: Vec<Patch>) -> Vec<Patch> {
 		for patch in &mut new_generation {
-			patch.resize(patch.len() / 2, Individual { loci: vec![] });
+			let len = patch.len() / 2;
+			patch.resize(
+				len,
+				Individual {
+					loci: Default::default(),
+				},
+			);
 		}
 		new_generation
 	}
 
-	pub fn dispersal(mut new_generation: Vec<Vec<Individual>>, m: f64) -> Vec<Vec<Individual>> {
+	pub fn dispersal(mut new_generation: Vec<Patch>, m: f64) -> Vec<Patch> {
 		let mut rng = thread_rng();
 		let distr = Bernoulli::new(m).unwrap();
 		let mut pool: Vec<_> = new_generation
 			.iter_mut()
+			.map(|patch| &mut **patch)
 			.flatten()
 			.filter(|_| distr.sample(&mut rng))
 			.collect();
@@ -213,11 +242,11 @@ impl State {
 	}
 
 	pub fn mutation(
-		mut new_generation: Vec<Vec<Individual>>,
+		mut new_generation: Vec<Patch>,
 		mutation_mu: f64,
 		mutation_sigma: f64,
 		mutation_step: f64,
-	) -> Vec<Vec<Individual>> {
+	) -> Vec<Patch> {
 		let mut rng = thread_rng();
 
 		let distr = Bernoulli::new(mutation_mu).unwrap();
@@ -227,7 +256,7 @@ impl State {
 		let up_down = Normal::new(0.0, mutation_sigma).unwrap();
 
 		for patch in &mut new_generation {
-			for individual in patch {
+			for individual in &mut **patch {
 				for locus in &mut individual.loci {
 					if distr.sample(&mut rng) {
 						// fixed
@@ -242,9 +271,9 @@ impl State {
 		new_generation
 	}
 
-	fn update(&mut self, new_generation: Vec<Vec<Individual>>) {
-		for (new_patch, patch) in new_generation.into_iter().zip(&mut self.patches) {
-			patch.individuals.extend(new_patch);
+	fn update(&mut self, new_generation: Vec<Patch>) {
+		for (new_patch, (patch, _)) in new_generation.into_iter().zip(&mut self.patches) {
+			patch.extend(new_patch);
 		}
 	}
 }
@@ -253,12 +282,12 @@ impl State {
 pub fn init(init_config: InitConfig) -> Result<State, &'static str> {
 	Ok(State {
 		tick:    0,
-		patches: vec![Patch {
-			environment: 0.5,
-			individuals: vec![Individual {
-				loci: vec![0.5, 0.7],
-			}],
-		}],
+		patches: vec![(
+			Patch::new(vec![Individual {
+				loci: tiny_vec!(0.5, 0.7),
+			}]),
+			0.5,
+		)],
 	})
 }
 
@@ -279,10 +308,9 @@ pub fn step(state: &mut State, config: &Config) {
 		config.mutation_sigma,
 		config.mutation_step,
 	);
-	for (patch, death) in state.patches.iter_mut().zip(death) {
-		patch
-			.individuals
-			.resize(patch.individuals.len() - death, Individual { loci: vec![] });
+	for ((patch, _), death) in state.patches.iter_mut().zip(death) {
+		let len = patch.len() - death;
+		patch.resize(len, Default::default());
 	}
 	state.update(new_generation);
 }
