@@ -128,7 +128,7 @@ impl State {
 
 	pub fn density_regulation(
 		&self,
-		mut reproductive_success: Vec<Vec<f64>>,
+		reproductive_success: Vec<Vec<f64>>,
 		death: &Vec<usize>,
 	) -> Vec<Vec<Individual>> {
 		let mut new_generation = Vec::with_capacity(self.patches.len());
