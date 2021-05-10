@@ -41,7 +41,6 @@ fn simulate(ticks: u64, shared: Shared, kill: mpsc::Receiver<()>) {
 			Some(inner) => {
 				step(&mut inner.state, &inner.config);
 				inner.state.tick += 1;
-
 				inner.values.push(Data {
 					size: 5.,
 					phenotype: 2.,
@@ -95,12 +94,16 @@ fn start_route(
 #[post("/stop")]
 fn stop_route(shared: State<Shared>) -> Json<Result<(), &'static str>> {
 	let response = match shared.lock() {
-		Ok(mut lock) => match &mut *lock {
-			Some(inner) => match inner.killer.send(()){
-				Ok(_) => Ok(()),
-				Err(_) => Err(POISON_ERROR)
-			}
-			None => Err(NOT_STARTED_ERROR),
+		Ok(mut lock) => {
+			let result = match &mut *lock {
+				Some(inner) => match inner.killer.send(()){
+					Ok(_) => Ok(()),
+					Err(_) => Err(POISON_ERROR)
+				}
+				None => Err(NOT_STARTED_ERROR),
+			};
+			*lock = None;
+			result
 		},
 		Err(_) => Err(POISON_ERROR)
 	};
@@ -127,7 +130,7 @@ fn query_route(shared: State<Shared>) -> Json<Result<simulation::State, &'static
 	let response = match shared.lock() {
 		Ok(lock) => lock
 			.as_ref()
-			.map(|inner| {eprintln!("{:?}", inner.state); inner.state.clone()})
+			.map(|inner| inner.state.clone())
 			.ok_or(NOT_STARTED_ERROR),
 		Err(_) => Err(POISON_ERROR),
 	};
