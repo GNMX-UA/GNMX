@@ -1,13 +1,14 @@
 use core::ptr;
 
 use itertools::izip;
+use patch::Patch;
 use rand::{prelude::SliceRandom, thread_rng, Rng};
 use rand_distr::{Bernoulli, Binomial, Distribution, Normal, WeightedAliasIndex};
 use serde::{Deserialize, Serialize};
+use tinyvec::{tiny_vec, TinyVec};
 
 // TODO juvenile/adult
 // TODO dispersal matrix
-// TODO Vec<Individu>
 // TODO init
 
 // possible extensions:
@@ -18,9 +19,9 @@ use serde::{Deserialize, Serialize};
 // theta vector
 // phenotype is not sum -> use inner product
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, Default)]
 pub struct Individual {
-	loci: Vec<f64>,
+	loci: TinyVec<[f64; 10]>,
 }
 
 impl Individual {
@@ -53,8 +54,6 @@ mod patch {
 		fn deref_mut(&mut self) -> &mut Self::Target { &mut self.individuals }
 	}
 }
-
-use patch::Patch;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum TempEnum {
@@ -200,7 +199,12 @@ impl State {
 					individual.loci[k ..].copy_from_slice(&patch[(2 * i) + 1].loci[.. k]);
 				}
 			}
-			patch.resize(len / 2, Individual { loci: vec![] })
+			patch.resize(
+				len / 2,
+				Individual {
+					loci: Default::default(),
+				},
+			)
 		}
 		new_generation
 	}
@@ -208,7 +212,12 @@ impl State {
 	pub fn haploid_generation(mut new_generation: Vec<Patch>) -> Vec<Patch> {
 		for patch in &mut new_generation {
 			let len = patch.len() / 2;
-			patch.resize(len, Individual { loci: vec![] });
+			patch.resize(
+				len,
+				Individual {
+					loci: Default::default(),
+				},
+			);
 		}
 		new_generation
 	}
@@ -275,7 +284,7 @@ pub fn init(init_config: InitConfig) -> Result<State, &'static str> {
 		tick:    0,
 		patches: vec![(
 			Patch::new(vec![Individual {
-				loci: vec![0.5, 0.7],
+				loci: tiny_vec!(0.5, 0.7),
 			}]),
 			0.5,
 		)],
@@ -301,7 +310,7 @@ pub fn step(state: &mut State, config: &Config) {
 	);
 	for ((patch, _), death) in state.patches.iter_mut().zip(death) {
 		let len = patch.len() - death;
-		patch.resize(len, Individual { loci: vec![] });
+		patch.resize(len, Default::default());
 	}
 	state.update(new_generation);
 }
