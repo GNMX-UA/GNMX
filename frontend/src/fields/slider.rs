@@ -17,6 +17,7 @@ pub struct SliderField {
 
 	initial: Option<f64>,
 	value: f64,
+	steps: u64,
 
 	range: Range<f64>,
 }

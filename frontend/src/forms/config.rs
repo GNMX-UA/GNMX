@@ -6,6 +6,7 @@ use crate::fields::slider::SliderField;
 use crate::fields::{Field, InputField, SelectField};
 use seed::futures::StreamExt;
 use std::cell::RefCell;
+use crate::fields::sliderbox::SliderBoxField;
 
 #[derive(Clone, Debug)]
 pub enum Msg {

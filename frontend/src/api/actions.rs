@@ -54,16 +54,5 @@ pub async fn update(config: Config) -> Result<(), String> {
 }
 
 pub async fn query() -> Result<State, String> {
-	log!(Request::new(format!("http://localhost:8000/api/query"))
-		.method(Method::Get)
-		.fetch()
-		.await
-		.map_err(|_| "Could not execute request")?
-		.check_status()
-		.map_err(|_| "Response doesn't have 2xx status")?
-		.text()
-		.await
-		.map_err(|_| "Could not parse response to json"));
-
 	get("api/query").await
 }

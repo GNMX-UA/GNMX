@@ -29,3 +29,23 @@
     cursor: pointer;
     border: 0
 }
+
+input::-webkit-outer-spin-button,
+input::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+
+.sliderbox {
+    -moz-appearance: textfield;
+    text-align: center;
+    width: 8em;
+    border-radius: 99999em;
+    display: inline-block;
+    outline: none !important;
+    border: 2px solid #1beabd;
+    color: #1b90ea;
+    cursor: col-resize;
+    user-select: none;
+    /*caret-color: transparent;*/
+}

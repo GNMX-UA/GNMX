@@ -127,7 +127,7 @@ fn query_route(shared: State<Shared>) -> Json<Result<simulation::State, &'static
 	let response = match shared.lock() {
 		Ok(lock) => lock
 			.as_ref()
-			.map(|inner| inner.state.clone())
+			.map(|inner| {eprintln!("{:?}", inner.state); inner.state.clone()})
 			.ok_or(NOT_STARTED_ERROR),
 		Err(_) => Err(POISON_ERROR),
 	};

@@ -8,7 +8,7 @@ use seed::{prelude::*, *};
 
 use crate::api::{query, Config, InitConfig, State};
 use crate::forms::{Action, ConfigForm};
-use crate::graphs::simple;
+use crate::graphs::area;
 use std::collections::HashMap;
 use std::future::Future;
 
@@ -24,7 +24,6 @@ struct Model {
 	config: ConfigForm,
 	history: Vec<State>,
 	started: bool,
-	crashed: bool, // a bool indicating something has gone horribly wrong and everything needs to be reset
 
 	messages: HashMap<usize, String>,
 	current_id: usize,
@@ -35,7 +34,6 @@ fn init(_: Url, _: &mut impl Orders<Msg>) -> Model {
 		config: ConfigForm::new(),
 		history: vec![],
 		started: false,
-		crashed: false,
 		messages: HashMap::new(),
 		current_id: 1,
 	}
@@ -44,7 +42,6 @@ fn init(_: Url, _: &mut impl Orders<Msg>) -> Model {
 fn handle_error(model: &mut Model, error: String) {
 	model.messages.insert(model.current_id, error);
 	model.current_id += 1;
-	model.crashed = true;
 
 	model.config.stop();
 }
@@ -74,8 +71,6 @@ fn update(msg: Msg, model: &mut Model, orders: &mut impl Orders<Msg>) {
 
 		Msg::Query(result) => match result {
 			Ok(state) => {
-				log!("i'm here");
-
 				if model.started {
 					orders.perform_cmd(async {
 						cmds::timeout(100, || ()).await;
@@ -84,12 +79,15 @@ fn update(msg: Msg, model: &mut Model, orders: &mut impl Orders<Msg>) {
 				}
 
 				model.history.push(state);
-				simple::draw("canvas", &model.history).expect("could not draw");
-			},
+				area::draw("canvas", &model.history).expect("could not draw");
+			}
 			Err(err) => {
-				log!("i'm here it failed", err);
+				model.started = false;
 				handle_error(model, err);
-				orders.perform_cmd(async { Msg::Result(api::stop().await) });
+				orders.perform_cmd(async {
+					let _ = api::stop().await;
+					Option::<Msg>::None
+				});
 			}
 		},
 		Msg::Result(result) => {
@@ -125,7 +123,7 @@ fn view(model: &Model) -> Node<Msg> {
 	div![
 		C!["columns"],
 		div![
-			C!["column is-8"],
+			C!["column is-8 ml-4 mt-5"],
 			view_messages(&model.messages),
 			canvas![attrs! {At::Id => "canvas", At::Width => "600", At::Height => "400"}]
 		],
