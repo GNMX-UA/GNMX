@@ -5,7 +5,7 @@ use patch::Patch;
 use rand::{prelude::SliceRandom, thread_rng, Rng};
 use rand_distr::{Bernoulli, Binomial, Distribution, Normal, WeightedAliasIndex};
 use serde::{Deserialize, Serialize};
-use tinyvec::{tiny_vec, TinyVec};
+use tinyvec::TinyVec;
 
 // TODO juvenile/adult
 // TODO dispersal matrix
@@ -31,6 +31,8 @@ impl Individual {
 mod patch {
 	use std::ops::{Deref, DerefMut};
 
+	use rand_distr::Uniform;
+
 	use super::*;
 
 	#[derive(Clone, Debug, Serialize, Deserialize)]
@@ -42,6 +44,26 @@ mod patch {
 		pub fn new(individuals: Vec<Individual>) -> Patch { Self { individuals } }
 
 		pub fn extend(&mut self, other: Patch) { self.individuals.extend(other.individuals); }
+
+		pub fn random(size: usize, patch_size: usize, loci: usize) -> Vec<Patch> {
+			let mut rng = thread_rng();
+			let distr = Uniform::new(-1.0 / loci as f64, 1.0 / loci as f64);
+			(0 .. size)
+				.map(|_| Patch {
+					individuals: (0 .. patch_size)
+						.map(|_| Individual {
+							loci: distr.sample_iter(&mut rng).take(loci).collect(),
+						})
+						.collect(),
+				})
+				.collect()
+		}
+
+		pub fn random_env(size: usize) -> Vec<f64> {
+			let mut rng = thread_rng();
+			let distr = Uniform::new(-1.0, 1.0);
+			distr.sample_iter(&mut rng).take(size).collect()
+		}
 	}
 
 	impl Deref for Patch {
@@ -65,7 +87,10 @@ pub struct InitConfig {
 	// max ticks, unlimited if None (=100000)
 	pub t_max: Option<u64>,
 
-	pub kind: TempEnum,
+	pub kind:        TempEnum,
+	pub patches:     usize,
+	pub individuals: usize,
+	pub loci:        usize,
 }
 
 // #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -118,6 +143,7 @@ impl State {
 				// let offspring = ((r_max / (selection_sigma * (2.0*PI).sqrt())).ln()
 				// 	- ((&patch.environment - individual.phenotype()).powi(2)
 				// 		/ (2.0 * selection_sigma.powi(2)))).exp();
+
 				let offspring = (r_max.ln()
 					- ((env - individual.phenotype()).powi(2) / (2.0 * selection_sigma.powi(2))))
 				.exp();
@@ -278,17 +304,23 @@ impl State {
 	}
 }
 
-// TODO: remove result probably
 pub fn init(init_config: InitConfig) -> Result<State, &'static str> {
-	Ok(State {
+	let patches = init_config.patches;
+	let individuals = init_config.individuals;
+	let loci = init_config.loci;
+
+	let patch_size = individuals / patches;
+	let p = Patch::random(patches, patch_size, loci).into_iter();
+	let e = Patch::random_env(patches).into_iter();
+
+	let state = State {
 		tick:    0,
-		patches: vec![(
-			Patch::new(vec![Individual {
-				loci: tiny_vec!(0.5, 0.7),
-			}]),
-			0.5,
-		)],
-	})
+		patches: p.zip(e).collect(),
+	};
+
+	// state.patches.push((Patch::new(vec![Individual { loci: tiny_vec!(0.5, 0.7) }]), 0.5));
+
+	Ok(state)
 }
 
 pub fn step(state: &mut State, config: &Config) {
@@ -308,6 +340,7 @@ pub fn step(state: &mut State, config: &Config) {
 		config.mutation_sigma,
 		config.mutation_step,
 	);
+	// TODO remove
 	for ((patch, _), death) in state.patches.iter_mut().zip(death) {
 		let len = patch.len() - death;
 		patch.resize(len, Default::default());
