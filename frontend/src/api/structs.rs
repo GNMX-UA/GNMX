@@ -3,13 +3,13 @@ use serde::{Deserialize, Serialize};
 // copy pasta from backend
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Individual {
-    loci: Vec<f64>,
+    pub loci: Vec<f64>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Patch {
-    environment: f64,
-    individuals: Vec<Individual>,
+    pub environment: f64,
+    pub individuals: Vec<Individual>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

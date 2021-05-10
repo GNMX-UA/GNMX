@@ -35,12 +35,10 @@ pub fn draw(
 	chart.configure_mesh().x_labels(3).y_labels(3).draw().ok()?;
 
 	chart
-		.draw_series(AreaSeries::new(
+		.draw_series(LineSeries::new(
 			history.iter().map(|(&tick, data)| (tick, map(data))),
-			0.0,
 			&COLORS[5],
 		))
 		.ok()?;
-
 	root.present().ok()
 }

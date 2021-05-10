@@ -1,2 +1,4 @@
 pub mod area;
-pub mod lines;
+pub mod line;
+pub mod colors;
+mod scatter;

@@ -6,9 +6,9 @@ mod graphs;
 
 use seed::{prelude::*, *};
 
-use crate::api::{query, Config, InitConfig, State};
+use crate::api::{query, Config, InitConfig, Patch, State};
 use crate::forms::{Action, ConfigForm};
-use crate::graphs::area;
+use crate::graphs::{area, line};
 use std::collections::HashMap;
 use std::future::Future;
 
@@ -19,10 +19,15 @@ pub enum Msg {
 	Delete(usize),
 	Result(Result<(), String>),
 }
+pub struct GraphData {
+	population: u64,
+	phenotype_variance: f64,
+	phenotype_distance: f64,
+}
 
 struct Model {
 	config: ConfigForm,
-	history: Vec<State>,
+	history: HashMap<u64, GraphData>,
 	started: bool,
 
 	messages: HashMap<usize, String>,
@@ -32,7 +37,7 @@ struct Model {
 fn init(_: Url, _: &mut impl Orders<Msg>) -> Model {
 	Model {
 		config: ConfigForm::new(),
-		history: vec![],
+		history: HashMap::new(),
 		started: false,
 		messages: HashMap::new(),
 		current_id: 1,
@@ -46,10 +51,48 @@ fn handle_error(model: &mut Model, error: String) {
 	model.config.stop();
 }
 
+fn extract_graph_data(patches: Vec<Patch>) -> Option<GraphData> {
+	let phenotypes: Vec<_> = patches
+		.iter()
+		.map(|patch| {
+			patch
+				.individuals
+				.iter()
+				.map(|indiv| indiv.loci.iter().sum())
+		})
+		.flatten()
+		.collect();
+
+	let mean = match phenotypes.len() {
+		0 => None,
+		_ => Some(phenotypes.iter().sum::<f64>() / phenotypes.len() as f64),
+	}?;
+
+	let variance = phenotypes
+		.iter()
+		.map(|f| (f - mean) * (f - mean))
+		.sum::<f64>()
+		/ phenotypes.len() as f64;
+
+	let max = phenotypes.iter().max_by(|x, y| x.partial_cmp(y).unwrap());
+
+	let min = phenotypes.iter().min_by(|x, y| x.partial_cmp(y).unwrap());
+
+	Some(GraphData {
+		population: patches
+			.iter()
+			.map(|patch| patch.individuals.len())
+			.sum::<usize>() as u64,
+		phenotype_variance: variance,
+		phenotype_distance: max? - min?,
+	})
+}
+
 fn update(msg: Msg, model: &mut Model, orders: &mut impl Orders<Msg>) {
 	match msg {
 		Msg::Config(msg) => match model.config.update(msg, &mut orders.proxy(Msg::Config)) {
 			Action::Start(initial, config) => {
+				model.started = true;
 				orders.perform_cmd(async {
 					cmds::timeout(100, || ()).await;
 					Msg::Query(api::query().await)
@@ -78,8 +121,24 @@ fn update(msg: Msg, model: &mut Model, orders: &mut impl Orders<Msg>) {
 					});
 				}
 
-				model.history.push(state);
-				area::draw("canvas", &model.history).expect("could not draw");
+				if let Some(data) = extract_graph_data(state.patches) {
+					model.history.insert(state.tick, data);
+				}
+
+				log!("before drawing population");
+				area::draw("canvas_pop", &model.history, |data| data.population as f64)
+					.expect("could not draw");
+
+				// let pop_iter = model.history.iter().map(|(x, data)| (x, *data.population));
+				// area::draw("canvas_pheno", pop_iter).expect("could not draw");
+
+				log!("before drawing variation");
+				line::draw("canvas_var", &model.history, |data| data.phenotype_variance)
+					.expect("could not draw");
+
+				log!("before drawing distance");
+				// let mapper = |data| data.phenotype_distance;
+				// area::draw("canvas_dist", &model.history, mapper).expect("could not draw");
 			}
 			Err(err) => {
 				model.started = false;
@@ -125,7 +184,10 @@ fn view(model: &Model) -> Node<Msg> {
 		div![
 			C!["column is-8 ml-4 mt-5"],
 			view_messages(&model.messages),
-			canvas![attrs! {At::Id => "canvas", At::Width => "600", At::Height => "400"}]
+			canvas![attrs! {At::Id => "canvas_pop", At::Width => "600", At::Height => "400"}],
+			canvas![attrs! {At::Id => "canvas_pheno", At::Width => "600", At::Height => "400"}],
+			canvas![attrs! {At::Id => "canvas_var", At::Width => "600", At::Height => "400"}],
+			canvas![attrs! {At::Id => "canvas_dist", At::Width => "600", At::Height => "400"}]
 		],
 		div![C!["column"], model.config.view().map_msg(Msg::Config)],
 	]
