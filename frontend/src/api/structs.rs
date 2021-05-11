@@ -1,21 +1,6 @@
 use serde::{Deserialize, Serialize};
-use tinyvec::TinyVec;
 
 // copy pasta from backend
-#[derive(Clone, Debug, Serialize, Deserialize, Default)]
-pub struct Individual {
-    loci: TinyVec<[f64; 10]>,
-}
-
-impl Individual {
-    pub fn phenotype(&self) -> f64 { self.loci.iter().sum() }
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct Patch {
-    pub individuals: Vec<Individual>,
-}
-
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum TempEnum {
     Default
@@ -61,12 +46,6 @@ pub struct Config {
     pub diploid: bool,
     // dispersal parameter
     pub m: f64,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct State {
-    pub tick:    u64,
-    pub patches: Vec<(Patch, f64)>,
 }
 
 #[derive(Clone, Debug, Deserialize)]

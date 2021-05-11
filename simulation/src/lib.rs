@@ -25,10 +25,10 @@ pub struct Individual {
 }
 
 impl Individual {
-	fn phenotype(&self) -> f64 { self.loci.iter().sum() }
+	pub fn phenotype(&self) -> f64 { self.loci.iter().sum() }
 }
 
-mod patch {
+pub mod patch {
 	use std::ops::{Deref, DerefMut};
 
 	use rand_distr::Uniform;
@@ -37,7 +37,7 @@ mod patch {
 
 	#[derive(Clone, Debug, Serialize, Deserialize)]
 	pub struct Patch {
-		individuals: Vec<Individual>,
+		pub individuals: Vec<Individual>,
 	}
 
 	impl Patch {

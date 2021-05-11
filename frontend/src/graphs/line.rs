@@ -1,4 +1,3 @@
-use crate::api::State;
 use crate::graphs::colors::COLORS;
 use crate::GraphData;
 use plotters::prelude::*;
@@ -32,7 +31,7 @@ pub fn draw(
 		.ok()?;
 
 	// This line will hang if y range is 0.0 .. 0.0, this is a plotters bug probably
-	chart.configure_mesh().x_labels(3).y_labels(3).draw().ok()?;
+	chart.configure_mesh().x_labels(10).y_labels(3).draw().ok()?;
 
 	chart
 		.draw_series(LineSeries::new(
