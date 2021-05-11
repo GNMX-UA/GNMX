@@ -1,11 +1,11 @@
 use core::ptr;
+use std::ops::{Deref, DerefMut};
 
 use itertools::izip;
-use patch::Patch;
 use rand::{prelude::SliceRandom, thread_rng, Rng};
-use rand_distr::{Bernoulli, Binomial, Distribution, Normal, WeightedAliasIndex};
+use rand_distr::{Bernoulli, Binomial, Distribution, Normal, Uniform, WeightedAliasIndex};
 use serde::{Deserialize, Serialize};
-use tinyvec::TinyVec;
+use tinyvec::{tiny_vec, TinyVec};
 
 // TODO juvenile/adult
 // TODO dispersal matrix
@@ -28,53 +28,45 @@ impl Individual {
 	pub fn phenotype(&self) -> f64 { self.loci.iter().sum() }
 }
 
-pub mod patch {
-	use std::ops::{Deref, DerefMut};
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Patch {
+	individuals: Vec<Individual>,
+}
 
-	use rand_distr::Uniform;
+impl Patch {
+	pub fn new(individuals: Vec<Individual>) -> Patch { Self { individuals } }
 
-	use super::*;
+	pub fn extend(&mut self, other: Patch) { self.individuals.extend(other.individuals); }
 
-	#[derive(Clone, Debug, Serialize, Deserialize)]
-	pub struct Patch {
-		pub individuals: Vec<Individual>,
+	pub fn random(size: usize, patch_size: usize, loci: usize) -> Vec<Patch> {
+		let mut rng = thread_rng();
+		let distr = Uniform::new(-1.0 / loci as f64, 1.0 / loci as f64);
+		(0 .. size)
+			.map(|_| Patch {
+				individuals: (0 .. patch_size)
+					.map(|_| Individual {
+						loci: distr.sample_iter(&mut rng).take(2 * loci).collect(),
+					})
+					.collect(),
+			})
+			.collect()
 	}
 
-	impl Patch {
-		pub fn new(individuals: Vec<Individual>) -> Patch { Self { individuals } }
-
-		pub fn extend(&mut self, other: Patch) { self.individuals.extend(other.individuals); }
-
-		pub fn random(size: usize, patch_size: usize, loci: usize) -> Vec<Patch> {
-			let mut rng = thread_rng();
-			let distr = Uniform::new(-1.0 / loci as f64, 1.0 / loci as f64);
-			(0 .. size)
-				.map(|_| Patch {
-					individuals: (0 .. patch_size)
-						.map(|_| Individual {
-							loci: distr.sample_iter(&mut rng).take(loci).collect(),
-						})
-						.collect(),
-				})
-				.collect()
-		}
-
-		pub fn random_env(size: usize) -> Vec<f64> {
-			let mut rng = thread_rng();
-			let distr = Uniform::new(-1.0, 1.0);
-			distr.sample_iter(&mut rng).take(size).collect()
-		}
+	pub fn random_env(size: usize) -> Vec<f64> {
+		let mut rng = thread_rng();
+		let distr = Uniform::new(0.0, 1.0);
+		distr.sample_iter(&mut rng).take(size).collect()
 	}
+}
 
-	impl Deref for Patch {
-		type Target = Vec<Individual>;
+impl Deref for Patch {
+	type Target = Vec<Individual>;
 
-		fn deref(&self) -> &Self::Target { &self.individuals }
-	}
+	fn deref(&self) -> &Self::Target { &self.individuals }
+}
 
-	impl DerefMut for Patch {
-		fn deref_mut(&mut self) -> &mut Self::Target { &mut self.individuals }
-	}
+impl DerefMut for Patch {
+	fn deref_mut(&mut self) -> &mut Self::Target { &mut self.individuals }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -318,7 +310,17 @@ pub fn init(init_config: InitConfig) -> Result<State, &'static str> {
 		patches: p.zip(e).collect(),
 	};
 
-	// state.patches.push((Patch::new(vec![Individual { loci: tiny_vec!(0.5, 0.7) }]), 0.5));
+	// let mut state = State {
+	// 	tick:    0,
+	// 	patches: vec![],
+	// };
+	//
+	// state.patches.push((
+	// 	Patch::new(vec![Individual {
+	// 		loci: tiny_vec!(0.5, 0.7),
+	// 	}]),
+	// 	0.5,
+	// ));
 
 	Ok(state)
 }
@@ -346,6 +348,12 @@ pub fn step(state: &mut State, config: &Config) {
 		patch.resize(len, Default::default());
 	}
 	state.update(new_generation);
+
+	println!(
+		"{:?}",
+		state.patches.iter().map(|x| &x.1).collect::<Vec<_>>()
+	);
+	std::thread::sleep_ms(300);
 }
 
 #[inline]

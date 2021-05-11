@@ -2,17 +2,19 @@ use std::time::{Duration, Instant};
 
 use futures::StreamExt;
 use log::{debug, error, info, warn};
+use rand::seq::SliceRandom;
 use serde::{Deserialize, Serialize};
+use simulation::{init, step, Config, InitConfig, Patch, TempEnum};
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
-use warp::ws::{Message, WebSocket};
-use warp::{Filter, Reply};
-
-use rand::seq::SliceRandom;
-use simulation::{init, patch::Patch, step, Config, InitConfig, TempEnum};
+use warp::{
+	ws::{Message, WebSocket},
+	Filter, Reply,
+};
 
 static ERROR: &str = "Internal server error, an illegal message was received.";
-static DROPPED: &str = "The receiver or sender in the simulation thread were dropped, most likely due to a crash, please restart the simulation.";
+static DROPPED: &str = "The receiver or sender in the simulation thread were dropped, most likely \
+                        due to a crash, please restart the simulation.";
 static NAN: &str = "Encountered NaN in loci or population size has become 0, stopping simulation.";
 
 static SAMPLE_SIZE: usize = 100;
@@ -20,7 +22,7 @@ static INTERVAL: u64 = 100;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct GraphData {
-	population: u64,
+	population:         u64,
 	phenotype_variance: f64,
 	phenotype_distance: f64,
 
@@ -57,12 +59,7 @@ fn extract_graph_data(patches: &[(Patch, f64)]) -> Option<GraphData> {
 	let phenotypes: Vec<_> = patches
 		.iter()
 		.enumerate()
-		.map(|(index, (patch, _))| {
-			patch
-				.individuals
-				.iter()
-				.map(move |indiv| (index, indiv.phenotype()))
-		})
+		.map(|(index, (patch, _))| patch.iter().map(move |indiv| (index, indiv.phenotype())))
 		.flatten()
 		.collect();
 
@@ -87,13 +84,10 @@ fn extract_graph_data(patches: &[(Patch, f64)]) -> Option<GraphData> {
 		.1;
 
 	Some(GraphData {
-		population: patches
-			.iter()
-			.map(|(patch, _)| patch.individuals.len())
-			.sum::<usize>() as u64,
+		population:         patches.iter().map(|(patch, _)| patch.len()).sum::<usize>() as u64,
 		phenotype_variance: variance,
 		phenotype_distance: max - min,
-		phenotype_sample: phenotypes
+		phenotype_sample:   phenotypes
 			.choose_multiple(&mut rand::thread_rng(), SAMPLE_SIZE)
 			.cloned()
 			.collect(),
@@ -126,11 +120,11 @@ fn simulate(
 			Err(std::sync::mpsc::TryRecvError::Disconnected) => {
 				warn!("{}", DROPPED);
 				return;
-			}
+			},
 			Ok(Notification::Stop) => {
 				info!("Simulation was stopped.");
 				return;
-			}
+			},
 			Ok(Notification::Update(new)) => config = new,
 			Ok(Notification::Pause) => paused = true,
 			Ok(Notification::Resume) => paused = false,
@@ -174,11 +168,11 @@ async fn receive(connection: WebSocket) {
 			match (msg, &mut notifier, &mut responder) {
 				(Query::Start(config), None, _) => {
 					let initial = InitConfig {
-						t_max: None,
-						kind: TempEnum::Default,
-						patches: 5,
+						t_max:       None,
+						kind:        TempEnum::Default,
+						patches:     5,
 						individuals: 10000,
-						loci: 500,
+						loci:        500,
 					};
 
 					let (response_sender, response_receiver) = mpsc::channel(128);
@@ -197,32 +191,31 @@ async fn receive(connection: WebSocket) {
 								.forward(sink),
 						);
 					}
-				}
-				(Query::Stop, Some(sender), _) => {
+				},
+				(Query::Stop, Some(sender), _) =>
 					if let Err(_) = sender.send(Notification::Stop) {
 						error!("{}", DROPPED)
-					}
-				}
+					},
 				(Query::Update(config), Some(sender), _) => {
 					if let Err(_) = sender.send(Notification::Update(config)) {
 						error!("{}", DROPPED)
 					}
-				}
+				},
 				(Query::Pause, Some(sender), _) => {
 					if let Err(_) = sender.send(Notification::Pause) {
 						error!("{}", DROPPED)
 					}
-				}
+				},
 				(Query::Resume, Some(sender), _) => {
 					if let Err(_) = sender.send(Notification::Resume) {
 						error!("{}", DROPPED)
 					}
-				}
+				},
 				(_, _, Some(responder)) => {
 					if let Err(err) = responder.send(Response::Error(ERROR.to_string())).await {
 						error!("{}", err)
 					}
-				}
+				},
 				_ => error!("{}", ERROR),
 			}
 		} else {
