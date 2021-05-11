@@ -54,6 +54,7 @@ pub enum Msg {
 	Config(crate::forms::config::Msg),
 	Delete(usize),
 	Draw(u64),
+	Resize,
 	Ws(WebSocketMessage),
 }
 
@@ -69,6 +70,7 @@ struct Model {
 }
 
 fn init(_: Url, orders: &mut impl Orders<Msg>) -> Model {
+	orders.stream(streams::window_event(Ev::Resize, |_| Msg::Resize));
 	Model {
 		config: ConfigForm::new(),
 		history: vec![],
@@ -125,8 +127,6 @@ fn update_ranges(data: &GraphData, ranges: &mut GraphRanges) {
 			.max_by(|a, b| a.partial_cmp(b).unwrap())
 			.unwrap(),
 	);
-
-	log(ranges);
 }
 
 fn draw_graphs(model: &mut Model) -> Duration {
@@ -137,7 +137,7 @@ fn draw_graphs(model: &mut Model) -> Duration {
 		&model.history,
 		|data| data.population as f64,
 		model.ranges.population.clone(),
-		"population size"
+		"population size",
 	)
 	.expect("could not draw");
 
@@ -145,7 +145,7 @@ fn draw_graphs(model: &mut Model) -> Duration {
 		"canvas_pheno",
 		&model.history,
 		model.ranges.phenotype_sample.clone(),
-		"phenotypes per patch"
+		"phenotypes per patch",
 	)
 	.expect("could not draw");
 
@@ -154,7 +154,7 @@ fn draw_graphs(model: &mut Model) -> Duration {
 		&model.history,
 		|data| data.phenotype_variance,
 		model.ranges.phenotype_variance.clone(),
-		"phenotypes variation"
+		"phenotypes variation",
 	)
 	.expect("could not draw");
 
@@ -164,7 +164,7 @@ fn draw_graphs(model: &mut Model) -> Duration {
 		&model.history,
 		mapper,
 		model.ranges.phenotype_distance.clone(),
-		"phenotypes distance"
+		"phenotypes distance",
 	)
 	.expect("could not draw");
 
@@ -195,9 +195,31 @@ fn update(msg: Msg, model: &mut Model, orders: &mut impl Orders<Msg>) {
 			Ok(Response::Stopped) => model.config.stop(),
 			Err(err) => handle_error(model, format!("{:?}", err)),
 		},
+		Msg::Resize => {
+			let document = window().document().unwrap();
+			let width = document
+				.get_element_by_id("canvasses")
+				.unwrap()
+				.dyn_into::<web_sys::HtmlDivElement>()
+				.unwrap()
+				.offset_width() as u32;
+
+			let resizer = |id: &str| {
+				document
+					.get_element_by_id(id)
+					.unwrap()
+					.dyn_into::<web_sys::HtmlCanvasElement>()
+					.unwrap()
+					.set_width(width);
+			};
+
+			resizer("canvas_pop");
+			resizer("canvas_pheno");
+			resizer("canvas_var");
+			resizer("canvas_dist");
+		}
 		Msg::Draw(last) => {
 			let tick = model.history.last().unwrap().0;
-			log!(tick, last);
 
 			let duration = if last == tick {
 				Duration::from_millis(100)
@@ -231,6 +253,7 @@ fn view(model: &Model) -> Node<Msg> {
 		C!["columns"],
 		div![
 			C!["column is-8 ml-4 mt-5"],
+			attrs! {At::Id => "canvasses"},
 			view_messages(&model.messages),
 			canvas![attrs! {At::Id => "canvas_pop", At::Width => "800", At::Height => "300"}],
 			canvas![attrs! {At::Id => "canvas_pheno", At::Width => "800", At::Height => "300"}],
