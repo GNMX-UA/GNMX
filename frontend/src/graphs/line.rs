@@ -10,7 +10,8 @@ pub fn draw(
 	canvas_id: &str,
 	history: &[(u64, GraphData)],
 	map: impl Fn(&GraphData) -> f64,
-	range: Range<f64>
+	range: Range<f64>,
+	title: &str
 ) -> Option<()> {
 	let backend = CanvasBackend::new(canvas_id).expect("cannot find canvas");
 	let root = backend.into_drawing_area();
@@ -21,6 +22,7 @@ pub fn draw(
 
 	let mut chart = ChartBuilder::on(&root)
 		.margin(20)
+		.caption(title, font)
 		.x_label_area_size(30)
 		.y_label_area_size(30)
 		.build_cartesian_2d(0..history.last().unwrap().0, range)
@@ -39,7 +41,7 @@ pub fn draw(
 	chart
 		.draw_series(LineSeries::new(
 			history.iter().map(|(tick, data)| (*tick, map(data))),
-			&COLORS[5],
+			&COLORS[6],
 		))
 		.ok()?;
 	root.present().ok()

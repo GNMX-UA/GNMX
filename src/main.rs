@@ -8,12 +8,12 @@ use tokio_stream::wrappers::ReceiverStream;
 use warp::ws::{Message, WebSocket};
 use warp::{Filter, Reply};
 
-use rand::prelude::IteratorRandom;
 use rand::seq::SliceRandom;
-use simulation::{init, patch::Patch, step, Config, InitConfig, State, TempEnum};
+use simulation::{init, patch::Patch, step, Config, InitConfig, TempEnum};
 
 static ERROR: &str = "Internal server error, an illegal message was received.";
 static DROPPED: &str = "The receiver or sender in the simulation thread were dropped, most likely due to a crash, please restart the simulation.";
+static NAN: &str = "Encountered NaN in loci or population size has become 0, stopping simulation.";
 
 static SAMPLE_SIZE: usize = 100;
 static INTERVAL: u64 = 100;
@@ -32,6 +32,8 @@ pub struct GraphData {
 pub enum Query {
 	Stop,
 	Start(Config),
+	Pause,
+	Resume,
 	Update(Config),
 }
 
@@ -46,6 +48,8 @@ pub enum Response {
 #[derive(Clone, Debug)]
 pub enum Notification {
 	Update(Config),
+	Pause,
+	Resume,
 	Stop,
 }
 
@@ -104,6 +108,7 @@ fn simulate(
 ) {
 	let ticks = initial.t_max.unwrap_or(u64::MAX);
 	let mut state = init(initial).unwrap();
+	let mut paused = false;
 
 	let mut last = Instant::now();
 	let interval = Duration::from_millis(INTERVAL);
@@ -111,14 +116,31 @@ fn simulate(
 	sender.blocking_send(Response::Started).unwrap();
 	info!("simulation started");
 
-	for _ in 0..ticks {
+	loop {
+		if state.tick > ticks {
+			info!("simulation ended");
+			return;
+		}
+
 		match receiver.try_recv() {
-			Err(std::sync::mpsc::TryRecvError::Disconnected) | Ok(Notification::Stop) => {
-				warn!("sender disconnected or simulation got killed");
+			Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+				warn!("{}", DROPPED);
+				return;
+			}
+			Ok(Notification::Stop) => {
+				info!("Simulation was stopped.");
 				return;
 			}
 			Ok(Notification::Update(new)) => config = new,
+			Ok(Notification::Pause) => paused = true,
+			Ok(Notification::Resume) => paused = false,
 			Err(std::sync::mpsc::TryRecvError::Empty) => (),
+		}
+
+		// to prevent a pure busy loop we sleep for 20 milliseconds each time we are paused
+		if paused {
+			std::thread::sleep(Duration::from_millis(20));
+			continue;
 		}
 
 		step(&mut state, &config);
@@ -129,11 +151,10 @@ fn simulate(
 			std::thread::yield_now();
 
 			last = Instant::now();
-			let data = extract_graph_data(&state.patches)
-				.expect("population zero or NaN encountered, aborting simulation");
+			let data = extract_graph_data(&state.patches).expect(NAN);
 
 			if let Err(_) = sender.blocking_send(Response::State(state.tick, data)) {
-				info!("sender disconnected, ending simulation");
+				info!("{}", DROPPED);
 				return;
 			}
 		}
@@ -184,6 +205,16 @@ async fn receive(connection: WebSocket) {
 				}
 				(Query::Update(config), Some(sender), _) => {
 					if let Err(_) = sender.send(Notification::Update(config)) {
+						error!("{}", DROPPED)
+					}
+				}
+				(Query::Pause, Some(sender), _) => {
+					if let Err(_) = sender.send(Notification::Pause) {
+						error!("{}", DROPPED)
+					}
+				}
+				(Query::Resume, Some(sender), _) => {
+					if let Err(_) = sender.send(Notification::Resume) {
 						error!("{}", DROPPED)
 					}
 				}

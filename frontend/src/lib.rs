@@ -8,7 +8,7 @@ use seed::{prelude::*, *};
 
 use crate::api::{Config, InitConfig};
 use crate::forms::{Action, ConfigForm};
-use crate::graphs::{area, line, scatter};
+use crate::graphs::{line, scatter};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::future::Future;
@@ -36,6 +36,8 @@ pub struct GraphRanges {
 pub enum Query {
 	Stop,
 	Start(Config),
+	Pause,
+	Resume,
 	Update(Config),
 }
 
@@ -90,6 +92,8 @@ fn handle_action(action: Action, ws: &mut WebSocket) {
 		Action::Start(_, config) => log!(ws.send_json(&Query::Start(config))),
 		Action::Update(config) => log!(ws.send_json(&Query::Update(config))),
 		Action::Stop => log!(ws.send_json(&Query::Stop)),
+		Action::Pause => log!(ws.send_json(&Query::Pause)),
+		Action::Resume => log!(ws.send_json(&Query::Resume)),
 		Action::None => {}
 	}
 }
@@ -128,11 +132,12 @@ fn update_ranges(data: &GraphData, ranges: &mut GraphRanges) {
 fn draw_graphs(model: &mut Model) -> Duration {
 	let start = Instant::now();
 
-	area::draw(
+	line::draw(
 		"canvas_pop",
 		&model.history,
 		|data| data.population as f64,
 		model.ranges.population.clone(),
+		"population size"
 	)
 	.expect("could not draw");
 
@@ -140,6 +145,7 @@ fn draw_graphs(model: &mut Model) -> Duration {
 		"canvas_pheno",
 		&model.history,
 		model.ranges.phenotype_sample.clone(),
+		"phenotypes per patch"
 	)
 	.expect("could not draw");
 
@@ -148,6 +154,7 @@ fn draw_graphs(model: &mut Model) -> Duration {
 		&model.history,
 		|data| data.phenotype_variance,
 		model.ranges.phenotype_variance.clone(),
+		"phenotypes variation"
 	)
 	.expect("could not draw");
 
@@ -157,6 +164,7 @@ fn draw_graphs(model: &mut Model) -> Duration {
 		&model.history,
 		mapper,
 		model.ranges.phenotype_distance.clone(),
+		"phenotypes distance"
 	)
 	.expect("could not draw");
 

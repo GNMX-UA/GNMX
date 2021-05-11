@@ -32,6 +32,14 @@ impl<Msg: 'static> Button<Msg> {
         Self::new("", "is-success", "fa-save", on_click)
     }
 
+    pub fn pause(on_click: impl Fn() -> Msg + Clone + 'static) -> Self {
+        Self::new("pause", "is-light", "fa-pause", on_click)
+    }
+
+    pub fn resume(on_click: impl Fn() -> Msg + Clone + 'static) -> Self {
+        Self::new("resume", "is-light", "fa-play", on_click)
+    }
+
     pub fn new(
         text: &'static str,
         style: &'static str,

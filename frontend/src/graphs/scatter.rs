@@ -6,7 +6,7 @@ use seed::*;
 use std::collections::HashMap;
 use std::ops::Range;
 
-pub fn draw(canvas_id: &str, history: &[(u64, GraphData)], range: Range<f64>) -> Option<()> {
+pub fn draw(canvas_id: &str, history: &[(u64, GraphData)], range: Range<f64>, title: &str) -> Option<()> {
 	let backend = CanvasBackend::new(canvas_id).expect("cannot find canvas");
 	let root = backend.into_drawing_area();
 	let font: FontDesc = ("sans-serif", 20.0).into();
@@ -15,6 +15,7 @@ pub fn draw(canvas_id: &str, history: &[(u64, GraphData)], range: Range<f64>) ->
 
 	let mut chart = ChartBuilder::on(&root)
 		.margin(20)
+		.caption(title, font)
 		.x_label_area_size(30)
 		.y_label_area_size(30)
 		.build_cartesian_2d(0..history.last().unwrap().0, range)

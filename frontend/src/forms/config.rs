@@ -27,6 +27,8 @@ pub enum Msg {
 	Start,
 	Update,
 	Stop,
+	Pause,
+	Resume
 }
 
 pub struct ConfigForm {
@@ -52,14 +54,19 @@ pub struct ConfigForm {
 	start: Button<Msg>,
 	update: Button<Msg>,
 	stop: Button<Msg>,
+	pause: Button<Msg>,
+	resume: Button<Msg>,
 
 	// state
 	started: bool,
+	paused: bool,
 }
 
 pub enum Action {
 	Start(InitConfig, Config),
 	Update(Config),
+	Pause,
+	Resume,
 	Stop,
 	None,
 }
@@ -102,8 +109,11 @@ impl ConfigForm {
 			m: SliderField::new("Dispersal parameter (M)", 0.0..1., 0.01),
 			start: Button::new("start", "is-success", "fa-play", || Msg::Start),
 			update: Button::new("update", "is-link", "fa-wrench", || Msg::Update),
-			stop: Button::new("stop", "is-danger is-outline", "fa-times", || Msg::Stop),
+			stop: Button::new("stop", "is-danger is-outlined", "fa-square", || Msg::Stop),
+			pause: Button::pause(|| Msg::Pause),
+			resume: Button::resume(|| Msg::Resume),
 			started: false,
+			paused: false
 		}
 	}
 
@@ -127,6 +137,14 @@ impl ConfigForm {
 			Msg::Stop => {
 				self.started = false;
 				return Action::Stop;
+			}
+			Msg::Pause => {
+				self.paused = true;
+				return Action::Pause
+			},
+			Msg::Resume => {
+				self.paused = false;
+				return Action::Resume
 			}
 			_ => (),
 		}
@@ -221,6 +239,20 @@ impl ConfigForm {
 		Some((self.extract_initial()?, self.extract_config()?))
 	}
 
+	pub fn view_start_stop(&self) -> Node<Msg> {
+		match self.started {
+			true => self.stop.view(false),
+			false => self.start.view(false),
+		}
+	}
+
+	pub fn view_pause_resume(&self) -> Node<Msg> {
+		match self.paused {
+			true => self.resume.view(!self.started),
+			false => self.pause.view(!self.started),
+		}
+	}
+
 	pub fn view(&self) -> Node<Msg> {
 		div![
 			C!["p-6"],
@@ -271,9 +303,9 @@ impl ConfigForm {
 			self.m.view(false).map_msg(Msg::M),
 			div![
 				C!["buttons pt-4"],
-				self.start.view(self.started),
+				self.view_start_stop(),
+				self.view_pause_resume(),
 				self.update.view(!self.started),
-				self.stop.view(!self.started)
 			]
 		]
 	}
