@@ -8,14 +8,14 @@ use std::collections::HashMap;
 
 pub fn draw(
 	canvas_id: &str,
-	history: &HashMap<u64, GraphData>,
+	history: &[(u64, GraphData)],
 	map: impl Fn(&GraphData) -> f64,
 ) -> Option<()> {
 	let backend = CanvasBackend::new(canvas_id).expect("cannot find canvas");
 	let root = backend.into_drawing_area();
 	let font: FontDesc = ("sans-serif", 20.0).into();
 
-	let x_max = *history.iter().map(|(tick, _)| tick).max()?;
+	let x_max = history.last()?.0;
 
 	let y_max = history
 		.iter()
@@ -36,7 +36,7 @@ pub fn draw(
 
 	chart
 		.draw_series(AreaSeries::new(
-			history.iter().map(|(&tick, data)| (tick, map(data))),
+			history.iter().map(|(tick, data)| (*tick, map(data))),
 			0.0,
 			&COLORS[5],
 		))

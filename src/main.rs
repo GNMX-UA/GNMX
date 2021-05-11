@@ -1,152 +1,163 @@
-#[macro_use]
-extern crate rocket;
+use std::time::{Duration, Instant};
 
-use std::sync::{mpsc, Arc, Mutex};
-
-use rocket::State;
-use rocket_contrib::{json::Json, serve::StaticFiles};
-use rocket_cors::CorsOptions;
+use futures::StreamExt;
+use log::{error, warn};
 use serde::{Deserialize, Serialize};
-use simulation::{init, step, Config, InitConfig};
+use tokio::sync::mpsc;
+use tokio_stream::wrappers::ReceiverStream;
+use warp::{Filter, Reply};
+use warp::ws::{Message, WebSocket};
 
-static POISON_ERROR: &str =
-	"The simulation thread crashed and poisoned the simulation, this is an internal error";
-static ALREADY_STARTED_ERROR: &str = "The simulation was already started, ignoring request";
-static NOT_STARTED_ERROR: &str = "The simulation was not yet started, ignoring request";
-static SETUP_FAILED: &str = "Simulation setup failed, this is an internal error";
+use simulation::{Config, init, InitConfig, State, step, TempEnum};
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
-struct Data {
-	pub size: f32,
-	pub phenotype: f32,
+static ERROR: &str = "Internal server error, an illegal message was received.";
+static DROPPED: &str = "The receiver or sender in the simulation thread were dropped, most likely due to a crash, please restart the simulation.";
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub enum Query {
+	Stop,
+	Start(Config),
+	Update(Config),
 }
 
-struct Inner {
-	pub config: Config,
-	pub values: Vec<Data>,
-	pub state: simulation::State,
-	pub killer: mpsc::Sender<()>,
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub enum Response {
+	Stopped,
+	Started,
+	State(State),
+	Error(String),
 }
 
-type Shared = Arc<Mutex<Option<Inner>>>;
-
-fn simulate(ticks: u64, shared: Shared, kill: mpsc::Receiver<()>) {
-	for _ in 0..ticks {
-		match kill.try_recv() {
-			Err(mpsc::TryRecvError::Empty) => (),
-			_ => return,
-		}
-
-		match shared.lock().unwrap().as_mut() {
-			Some(inner) => {
-				step(&mut inner.state, &inner.config);
-				inner.state.tick += 1;
-				inner.values.push(Data {
-					size: 5.,
-					phenotype: 2.,
-				})
-			}
-			None => warn!("{}", SETUP_FAILED),
-		}
-	}
+#[derive(Clone, Debug)]
+pub enum Notification {
+	Update(Config),
+	Stop,
 }
 
-fn start(initial: InitConfig, config: Config, shared: &Shared) {
-	let (sender, receiver) = mpsc::channel();
-
+fn simulate(
+	initial: InitConfig,
+	mut config: Config,
+	receiver: std::sync::mpsc::Receiver<Notification>,
+	sender: mpsc::Sender<Response>,
+) {
 	let ticks = initial.t_max.unwrap_or(u64::MAX);
-	let inner = Inner {
-		config,
-		values: vec![],
-		killer: sender,
-		state: init(initial).unwrap(),
-	};
+	let mut state = init(initial).unwrap();
 
-	if let Ok(mut lock) = shared.lock() {
-		lock.get_or_insert(inner);
-	}
+	let mut last = Instant::now();
+	let interval = Duration::from_millis(20);
 
-	let cloned = shared.clone();
-	std::thread::spawn(move || simulate(ticks, cloned, receiver));
-}
+	sender.blocking_send(Response::Started).unwrap();
+	eprintln!("simulation started");
 
-#[post("/start", data = "<pair>")]
-fn start_route(
-	pair: Json<(InitConfig, Config)>,
-	shared: State<Shared>,
-) -> Json<Result<(), &'static str>> {
-	let result = match shared.lock(){
-		Ok(mut lock) => match &mut *lock {
-			Some(_) => Err(ALREADY_STARTED_ERROR),
-			None => Ok(()),
+	for _ in 0..ticks {
+		match receiver.try_recv() {
+			Err(std::sync::mpsc::TryRecvError::Disconnected) | Ok(Notification::Stop) => {
+				warn!("sender disconnected or simulation got killed");
+				return
+			},
+			Ok(Notification::Update(new)) => config = new,
+			Err(std::sync::mpsc::TryRecvError::Empty) => (),
 		}
-		Err(_) => Err(POISON_ERROR)
-	};
 
-	if result.is_ok() {
-		let (initial, config) = pair.into_inner();
-		start(initial, config, shared.inner());
-	}
+		step(&mut state, &config);
+		state.tick += 1;
 
-	Json(result)
-}
-
-#[post("/stop")]
-fn stop_route(shared: State<Shared>) -> Json<Result<(), &'static str>> {
-	let response = match shared.lock() {
-		Ok(mut lock) => {
-			let result = match &mut *lock {
-				Some(inner) => match inner.killer.send(()){
-					Ok(_) => Ok(()),
-					Err(_) => Err(POISON_ERROR)
-				}
-				None => Err(NOT_STARTED_ERROR),
-			};
-			*lock = None;
-			result
-		},
-		Err(_) => Err(POISON_ERROR)
-	};
-	Json(response)
-}
-
-#[post("/update", data = "<config>")]
-fn update_route(config: Json<Config>, shared: State<Shared>) -> Json<Result<(), &'static str>> {
-	let response = match shared.lock() {
-		Ok(mut lock) => match &mut *lock{
-			Some(inner) => {
-				inner.config = config.into_inner();
-				Ok(())
+		if last.elapsed() > interval {
+			eprintln!("sending state");
+			last = Instant::now();
+			if let Err(_) = sender.blocking_send(Response::State(state.clone())) {
+				warn!("sender disconnected, ending simulation");
+				return
 			}
-			None => Err(NOT_STARTED_ERROR),
-		},
-		Err(_) => Err(POISON_ERROR)
-	};
-	Json(response)
+		}
+	}
 }
 
-#[get("/query")]
-fn query_route(shared: State<Shared>) -> Json<Result<simulation::State, &'static str>> {
-	let response = match shared.lock() {
-		Ok(lock) => lock
-			.as_ref()
-			.map(|inner| inner.state.clone())
-			.ok_or(NOT_STARTED_ERROR),
-		Err(_) => Err(POISON_ERROR),
-	};
-	Json(response)
+async fn receive(connection: WebSocket) {
+	let (sink, mut stream) = connection.split();
+
+	let mut sink = Some(sink);
+	let mut notifier = None;
+	let mut responder = None;
+
+	while let Some(Ok(message)) = stream.next().await {
+		if message.is_text() {
+			let msg = serde_json::from_slice(message.as_bytes()).unwrap();
+			match (msg, &mut notifier, &mut responder) {
+				(Query::Start(config), None, _) => {
+					let initial = InitConfig {
+						t_max: None,
+						kind: TempEnum::Default,
+						patches: 5,
+						individuals: 100,
+						loci: 2,
+					};
+
+					let (response_sender, response_receiver) = mpsc::channel(128);
+					let (notif_sender, notif_receiver) = std::sync::mpsc::channel();
+					error!("je suis ici");
+					notifier = Some(notif_sender);
+					responder = Some(response_sender.clone());
+
+					std::thread::spawn(move || {
+						simulate(initial, config, notif_receiver, response_sender)
+					});
+
+					if let Some(sink) = sink.take() {
+						let rx = ReceiverStream::new(response_receiver);
+						tokio::task::spawn(
+							rx.map(|resp| Ok(Message::text(serde_json::to_string(&resp).unwrap())))
+								.forward(sink),
+						);
+					}
+				}
+				(Query::Stop, Some(sender), _) => {
+					if let Err(_) = sender.send(Notification::Stop) {
+						error!("{}", DROPPED)
+					}
+				}
+				(Query::Update(config), Some(sender), _) => {
+					if let Err(_) = sender.send(Notification::Update(config)) {
+						error!("{}", DROPPED)
+					}
+				}
+				(_, _, Some(responder)) => {
+					if let Err(err) = responder.send(Response::Error(ERROR.to_string())).await {
+						error!("{}", err)
+					}
+				},
+				_ => error!("{}", ERROR)
+			}
+		}
+		else {
+			error!("received message is not text type")
+		}
+		warn!("websocket disconnected");
+	}
 }
 
 #[tokio::main]
-async fn main() -> Result<(), rocket::error::Error> {
-	let routes = routes![start_route, stop_route, update_route, query_route];
-	let managed: Shared = Arc::new(Mutex::default());
+async fn main() {
+	pretty_env_logger::init();
 
-	rocket::build()
-		.attach(CorsOptions::default().to_cors().unwrap())
-		.mount("/api", routes)
-		.mount("/", StaticFiles::from("static"))
-		.manage(managed)
-		.launch()
-		.await
+	let types = |reply: warp::filters::fs::File|
+		{
+			if reply.path().ends_with("wasm.js")
+			{
+				let reply = warp::reply::with_header(reply, "Cache-Control", "no-store");
+				let reply = warp::reply::with_header(reply, "Content-Type", "text/javascript");
+				reply.into_response()
+			} else {
+				reply.into_response()
+			}
+		};
+
+	let ws = warp::path("ws")
+		.and(warp::ws())
+		.map(|ws: warp::ws::Ws| ws.on_upgrade(receive));
+
+	let files = warp::fs::dir("static").map(types);
+	let routes = ws.or(files);
+
+	warp::serve(routes).run(([127, 0, 0, 1], 3030)).await
 }

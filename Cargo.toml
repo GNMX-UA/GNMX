@@ -11,11 +11,10 @@ members = ["simulation", "frontend"]
 
 [dependencies]
 tokio = { version = "1", features = ["full"] }
+tokio-stream = "0.1"
 
-# we are edgy boys and use the master branch for JUICY features but we specify commits so nothing breaks
-rocket = { git = "https://github.com/SergioBenitez/Rocket.git", rev = "801e04bd5369eb39e126c75f6d11e1e9597304d8" }
-rocket_contrib = { git = "https://github.com/SergioBenitez/Rocket.git", rev = "801e04bd5369eb39e126c75f6d11e1e9597304d8" }
-rocket_cors = { git = "https://github.com/lawliet89/rocket_cors", rev = "273522e697140db9a3ff5932ba667f502bfad57e" }
+warp = "0.3"
+futures = "0.3"
 
 log = "0.4"
 pretty_env_logger = "0.4"

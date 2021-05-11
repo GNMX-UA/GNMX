@@ -19,6 +19,7 @@ plotters-canvas = "^0.3.*"
 seed = "0.8"
 chrono = "0.4"
 serde = "1.0"
+tinyvec = { version = "*", features = ["alloc", "serde"]}
 
 wasm-bindgen-futures = "0.4.17"
 serde-wasm-bindgen = "0.1.3"

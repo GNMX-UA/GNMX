@@ -1,14 +1,18 @@
 use serde::{Deserialize, Serialize};
+use tinyvec::TinyVec;
 
 // copy pasta from backend
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, Default)]
 pub struct Individual {
-    pub loci: Vec<f64>,
+    loci: TinyVec<[f64; 10]>,
+}
+
+impl Individual {
+    pub fn phenotype(&self) -> f64 { self.loci.iter().sum() }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Patch {
-    pub environment: f64,
     pub individuals: Vec<Individual>,
 }
 
@@ -62,7 +66,7 @@ pub struct Config {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct State {
     pub tick:    u64,
-    pub patches: Vec<Patch>,
+    pub patches: Vec<(Patch, f64)>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
