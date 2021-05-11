@@ -12,6 +12,7 @@ use crate::graphs::{area, line, scatter};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::future::Future;
+use std::ops::Range;
 use std::time::Duration;
 use wasm_timer::Instant;
 
@@ -20,9 +21,15 @@ pub struct GraphData {
 	population: u64,
 	phenotype_variance: f64,
 	phenotype_distance: f64,
+	phenotype_sample: Vec<(usize, f64)>, // (patch_index, phenotype)
+}
 
-	// (patch_index, phenotype) - max: SAMPLE_SIZE
-	phenotype_sample: Vec<(usize, f64)>,
+#[derive(Clone, Debug, Default)]
+pub struct GraphRanges {
+	population: Range<f64>,
+	phenotype_variance: Range<f64>,
+	phenotype_distance: Range<f64>,
+	phenotype_sample: Range<f64>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -50,8 +57,10 @@ pub enum Msg {
 
 struct Model {
 	config: ConfigForm,
-	history: Vec<(u64, GraphData)>,
 	ws: WebSocket,
+
+	history: Vec<(u64, GraphData)>,
+	ranges: GraphRanges,
 
 	messages: HashMap<usize, String>,
 	current_id: usize,
@@ -61,6 +70,7 @@ fn init(_: Url, orders: &mut impl Orders<Msg>) -> Model {
 	Model {
 		config: ConfigForm::new(),
 		history: vec![],
+		ranges: Default::default(),
 		ws: WebSocket::builder("ws://127.0.0.1:3030/ws", orders)
 			.on_message(Msg::Ws)
 			.build_and_open()
@@ -84,19 +94,71 @@ fn handle_action(action: Action, ws: &mut WebSocket) {
 	}
 }
 
+fn update_ranges(data: &GraphData, ranges: &mut GraphRanges) {
+	ranges.population.start = ranges.population.start.min(data.population as f64);
+	ranges.population.end = ranges.population.end.max(data.population as f64);
+
+	ranges.phenotype_variance.start = ranges.phenotype_variance.start.min(data.phenotype_variance);
+	ranges.phenotype_variance.end = ranges.phenotype_variance.end.max(data.phenotype_variance);
+
+	ranges.phenotype_distance.start = ranges.phenotype_distance.start.min(data.phenotype_distance);
+	ranges.phenotype_distance.end = ranges.phenotype_distance.end.max(data.phenotype_distance);
+
+	// use a crate for this abomination
+	ranges.phenotype_sample.start = ranges.phenotype_sample.start.min(
+		*data
+			.phenotype_sample
+			.iter()
+			.map(|(a, b)| b)
+			.min_by(|a, b| a.partial_cmp(b).unwrap())
+			.unwrap(),
+	);
+	ranges.phenotype_sample.end = ranges.phenotype_sample.end.max(
+		*data
+			.phenotype_sample
+			.iter()
+			.map(|(a, b)| b)
+			.max_by(|a, b| a.partial_cmp(b).unwrap())
+			.unwrap(),
+	);
+
+	log(ranges);
+}
+
 fn draw_graphs(model: &mut Model) -> Duration {
 	let start = Instant::now();
 
-	area::draw("canvas_pop", &model.history, |data| data.population as f64)
-		.expect("could not draw");
+	area::draw(
+		"canvas_pop",
+		&model.history,
+		|data| data.population as f64,
+		model.ranges.population.clone(),
+	)
+	.expect("could not draw");
 
-	scatter::draw("canvas_pheno", &model.history).expect("could not draw");
+	scatter::draw(
+		"canvas_pheno",
+		&model.history,
+		model.ranges.phenotype_sample.clone(),
+	)
+	.expect("could not draw");
 
-	line::draw("canvas_var", &model.history, |data| data.phenotype_variance)
-		.expect("could not draw");
+	line::draw(
+		"canvas_var",
+		&model.history,
+		|data| data.phenotype_variance,
+		model.ranges.phenotype_variance.clone(),
+	)
+	.expect("could not draw");
 
 	let mapper = |data: &GraphData| data.phenotype_distance;
-	line::draw("canvas_dist", &model.history, mapper).expect("could not draw");
+	line::draw(
+		"canvas_dist",
+		&model.history,
+		mapper,
+		model.ranges.phenotype_distance.clone(),
+	)
+	.expect("could not draw");
 
 	start.elapsed()
 }
@@ -112,6 +174,7 @@ fn update(msg: Msg, model: &mut Model, orders: &mut impl Orders<Msg>) {
 		}
 		Msg::Ws(message) => match message.json::<Response>() {
 			Ok(Response::State(tick, data)) => {
+				update_ranges(&data, &mut model.ranges);
 				model.history.push((tick, data));
 
 				// Start draw loop
