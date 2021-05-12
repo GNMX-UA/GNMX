@@ -12,3 +12,6 @@ rand = "*"
 rand_distr = "*"
 itertools = "*"
 tinyvec = { version = "*", features = ["alloc", "serde"]}
+
+[profile.dev]
+opt-level = 3
