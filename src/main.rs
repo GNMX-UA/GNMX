@@ -38,19 +38,18 @@ pub enum Query {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
+pub enum Notification {
+	Pause,
+	Resume,
+	Update(Config),
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum Response {
 	Stopped,
 	Started,
 	State(u64, GraphData),
 	Error(String),
-}
-
-#[derive(Clone, Debug)]
-pub enum Notification {
-	Update(Config),
-	Pause,
-	Resume,
-	Stop,
 }
 
 fn extract_graph_data(patches: &[(Patch, f64)]) -> Option<GraphData> {
@@ -105,9 +104,10 @@ fn simulate(
 	mut config: Config,
 	receiver: std::sync::mpsc::Receiver<Notification>,
 	sender: mpsc::Sender<Response>,
-) {
+) -> std::sync::mpsc::Receiver<Notification> {
 	let ticks = initial.t_max.unwrap_or(u64::MAX);
 	let mut state = init(initial).unwrap();
+
 	let mut paused = false;
 
 	let mut last = Instant::now();
@@ -119,17 +119,13 @@ fn simulate(
 	loop {
 		if state.tick > ticks {
 			info!("simulation ended");
-			return;
+			return receiver;
 		}
 
 		match receiver.try_recv() {
 			Err(std::sync::mpsc::TryRecvError::Disconnected) => {
-				warn!("{}", DROPPED);
-				return;
-			}
-			Ok(Notification::Stop) => {
-				info!("Simulation was stopped.");
-				return;
+				info!("simulation stopped");
+				return receiver;
 			}
 			Ok(Notification::Update(new)) => config = new,
 			Ok(Notification::Pause) => paused = true,
@@ -155,7 +151,7 @@ fn simulate(
 
 			if let Err(_) = sender.blocking_send(Response::State(state.tick, data)) {
 				info!("{}", DROPPED);
-				return;
+				return receiver;
 			}
 		}
 	}
@@ -163,16 +159,21 @@ fn simulate(
 
 async fn receive(connection: WebSocket) {
 	let (sink, mut stream) = connection.split();
+	let (responder, response_receiver) = mpsc::channel(128);
 
-	let mut sink = Some(sink);
 	let mut notifier = None;
-	let mut responder = None;
+
+	let rx = ReceiverStream::new(response_receiver);
+	tokio::task::spawn(
+		rx.map(|resp| Ok(Message::text(serde_json::to_string(&resp).unwrap())))
+			.forward(sink),
+	);
 
 	while let Some(Ok(message)) = stream.next().await {
 		if message.is_text() {
 			let msg = serde_json::from_slice(message.as_bytes()).unwrap();
-			match (msg, &mut notifier, &mut responder) {
-				(Query::Start(config), None, _) => {
+			match (msg, &mut notifier) {
+				(Query::Start(config), None) => {
 					let initial = InitConfig {
 						t_max: None,
 						kind: TempEnum::Default,
@@ -181,55 +182,42 @@ async fn receive(connection: WebSocket) {
 						loci: 500,
 					};
 
-					let (response_sender, response_receiver) = mpsc::channel(128);
 					let (notif_sender, notif_receiver) = std::sync::mpsc::channel();
 					notifier = Some(notif_sender);
-					responder = Some(response_sender.clone());
 
-					std::thread::spawn(move || {
-						simulate(initial, config, notif_receiver, response_sender)
-					});
-
-					if let Some(sink) = sink.take() {
-						let rx = ReceiverStream::new(response_receiver);
-						tokio::task::spawn(
-							rx.map(|resp| Ok(Message::text(serde_json::to_string(&resp).unwrap())))
-								.forward(sink),
-						);
-					}
+					let cloned = responder.clone();
+					std::thread::spawn(move || simulate(initial, config, notif_receiver, cloned));
 				}
-				(Query::Stop, Some(sender), _) => {
-					if let Err(_) = sender.send(Notification::Stop) {
+				(Query::Stop, sim_data) => {
+					*sim_data = None;
+				}
+				(Query::Update(config), Some(notifier)) => {
+					if let Err(_) = notifier.send(Notification::Update(config)) {
 						error!("{}", DROPPED)
 					}
 				}
-				(Query::Update(config), Some(sender), _) => {
-					if let Err(_) = sender.send(Notification::Update(config)) {
+				(Query::Pause, Some(notifier)) => {
+					if let Err(_) = notifier.send(Notification::Pause) {
 						error!("{}", DROPPED)
 					}
 				}
-				(Query::Pause, Some(sender), _) => {
-					if let Err(_) = sender.send(Notification::Pause) {
+				(Query::Resume, Some(notifier)) => {
+					if let Err(_) = notifier.send(Notification::Resume) {
 						error!("{}", DROPPED)
 					}
 				}
-				(Query::Resume, Some(sender), _) => {
-					if let Err(_) = sender.send(Notification::Resume) {
-						error!("{}", DROPPED)
-					}
-				}
-				(_, _, Some(responder)) => {
+				_ => {
 					if let Err(err) = responder.send(Response::Error(ERROR.to_string())).await {
 						error!("{}", err)
 					}
 				}
-				_ => error!("{}", ERROR),
 			}
 		} else {
-			error!("received message is not text type")
+			// TODO: also handle disconnect instead of this error
+			warn!("received message is not text type")
 		}
-		warn!("websocket disconnected");
 	}
+	info!("websocket disconnected");
 }
 
 #[tokio::main]
