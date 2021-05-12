@@ -9,6 +9,7 @@ use seed::{prelude::*, *};
 use crate::api::{Config, InitConfig};
 use crate::forms::{Action, ConfigForm};
 use crate::graphs::{line, scatter};
+use ord_subset::OrdSubsetIterExt;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::future::Future;
@@ -45,6 +46,7 @@ pub enum Query {
 pub enum Response {
 	Stopped,
 	Started,
+	Info(String),
 	State(u64, GraphData),
 	Error(String),
 }
@@ -63,9 +65,10 @@ struct Model {
 	ws: WebSocket,
 
 	history: Vec<(u64, GraphData)>,
+	drawing: bool,
 	ranges: GraphRanges,
 
-	messages: HashMap<usize, String>,
+	messages: HashMap<usize, (bool, String)>,
 	current_id: usize,
 }
 
@@ -74,6 +77,7 @@ fn init(_: Url, orders: &mut impl Orders<Msg>) -> Model {
 	Model {
 		config: ConfigForm::new(),
 		history: vec![],
+		drawing: false,
 		ranges: Default::default(),
 		ws: WebSocket::builder("ws://127.0.0.1:3030/ws", orders)
 			.on_message(Msg::Ws)
@@ -82,11 +86,6 @@ fn init(_: Url, orders: &mut impl Orders<Msg>) -> Model {
 		messages: HashMap::new(),
 		current_id: 1,
 	}
-}
-
-fn handle_error(model: &mut Model, error: String) {
-	model.messages.insert(model.current_id, error);
-	model.current_id += 1;
 }
 
 fn handle_action(action: Action, ws: &mut WebSocket) {
@@ -100,33 +99,38 @@ fn handle_action(action: Action, ws: &mut WebSocket) {
 	}
 }
 
+fn min_assign(a: &mut f64, b: f64) {
+	*a = a.min(b);
+}
+
+fn max_assign(a: &mut f64, b: f64) {
+	*a = a.max(b);
+}
+
 fn update_ranges(data: &GraphData, ranges: &mut GraphRanges) {
-	ranges.population.start = ranges.population.start.min(data.population as f64);
-	ranges.population.end = ranges.population.end.max(data.population as f64);
+	min_assign(&mut ranges.population.start, data.population as f64);
+	max_assign(&mut ranges.population.end, data.population as f64);
 
-	ranges.phenotype_variance.start = ranges.phenotype_variance.start.min(data.phenotype_variance);
-	ranges.phenotype_variance.end = ranges.phenotype_variance.end.max(data.phenotype_variance);
+	min_assign(&mut ranges.phenotype_variance.start, data.phenotype_variance);
+	max_assign(&mut ranges.phenotype_variance.end, data.phenotype_variance);
 
-	ranges.phenotype_distance.start = ranges.phenotype_distance.start.min(data.phenotype_distance);
-	ranges.phenotype_distance.end = ranges.phenotype_distance.end.max(data.phenotype_distance);
+	min_assign(&mut ranges.phenotype_distance.start, data.phenotype_distance);
+	max_assign(&mut ranges.phenotype_distance.end, data.phenotype_distance);
 
-	// use a crate for this abomination
-	ranges.phenotype_sample.start = ranges.phenotype_sample.start.min(
-		*data
-			.phenotype_sample
-			.iter()
-			.map(|(a, b)| b)
-			.min_by(|a, b| a.partial_cmp(b).unwrap())
-			.unwrap(),
-	);
-	ranges.phenotype_sample.end = ranges.phenotype_sample.end.max(
-		*data
-			.phenotype_sample
-			.iter()
-			.map(|(a, b)| b)
-			.max_by(|a, b| a.partial_cmp(b).unwrap())
-			.unwrap(),
-	);
+	let sample_min = data.phenotype_sample
+		.iter()
+		.map(|x| x.1)
+		.ord_subset_min()
+		.unwrap();
+
+	let sample_max = data.phenotype_sample
+		.iter()
+		.map(|x| x.1)
+		.ord_subset_max()
+		.unwrap();
+
+	min_assign(&mut ranges.phenotype_sample.start, sample_min);
+	max_assign(&mut ranges.phenotype_sample.end, sample_max);
 }
 
 fn draw_graphs(model: &mut Model) -> Duration {
@@ -185,31 +189,42 @@ fn update(msg: Msg, model: &mut Model, orders: &mut impl Orders<Msg>) {
 				update_ranges(&data, &mut model.ranges);
 				model.history.push((tick, data));
 
-				// Start draw loop
-				if model.history.len() == 1 {
+				if !model.drawing {
 					orders.send_msg(Msg::Draw(tick));
 				}
 			}
 			Ok(Response::Started) => log!("simulation started"),
-			Ok(Response::Error(error)) => handle_error(model, error),
-			Ok(Response::Stopped) => model.config.stop(),
-			Err(err) => handle_error(model, format!("{:?}", err)),
+			Ok(Response::Info(info)) => {
+				model.messages.insert(model.current_id, (false, info));
+				model.current_id += 1;
+			}
+			Ok(Response::Error(error)) => {
+				model.messages.insert(model.current_id, (true, error));
+				model.current_id += 1;
+			}
+			Ok(Response::Stopped) => {
+				model.config.stop();
+				model.history.clear();
+				model.drawing = false;
+			}
+			Err(err) => log!(err),
 		},
 		Msg::Resize => {
-			let document = window().document().unwrap();
+			// TODO: maybe make resize optional if problem found
+			let document = window().document().expect("window has no document");
 			let width = document
 				.get_element_by_id("canvasses")
-				.unwrap()
+				.expect("could not find element canvasses")
 				.dyn_into::<web_sys::HtmlDivElement>()
-				.unwrap()
+				.expect("could not turn canvasses into div element")
 				.offset_width() as u32;
 
 			let resizer = |id: &str| {
 				document
 					.get_element_by_id(id)
-					.unwrap()
+					.expect("could not find canvas element")
 					.dyn_into::<web_sys::HtmlCanvasElement>()
-					.unwrap()
+					.expect("could not turn canvas into canvas element")
 					.set_width(width);
 			};
 
@@ -218,29 +233,30 @@ fn update(msg: Msg, model: &mut Model, orders: &mut impl Orders<Msg>) {
 			resizer("canvas_var");
 			resizer("canvas_dist");
 		}
-		Msg::Draw(last) => {
+		Msg::Draw(last) if model.history.len() > 0 => {
+			model.drawing = true;
 			let tick = model.history.last().unwrap().0;
 
-			let duration = if last == tick {
-				Duration::from_millis(100)
-			} else {
-				draw_graphs(model)
+			// TODO: why the fuck does matching not work
+			let duration = match tick {
+				_ if last == tick => Duration::from_millis(100),
+				_ => draw_graphs(model)
 			};
 
-			orders.perform_cmd(cmds::timeout(duration.as_millis() as u32, move || {
-				Msg::Draw(tick)
-			}));
+			let cmd = cmds::timeout(duration.as_millis() as u32, move || Msg::Draw(tick));
+			orders.perform_cmd(cmd);
 		}
+		Msg::Draw(_) => {}
 	}
 }
 
-fn view_messages(messages: &HashMap<usize, String>) -> Vec<Node<Msg>> {
+fn view_messages(messages: &HashMap<usize, (bool, String)>) -> Vec<Node<Msg>> {
 	messages
 		.iter()
-		.map(|(id, msg)| {
+		.map(|(id, (is_error, msg))| {
 			let copy = *id;
 			div![
-				C!["notification"],
+				C!["notification" IF!(*is_error => "is-warning")],
 				button![C!["delete"], ev(Ev::Click, move |_| Msg::Delete(copy))],
 				&msg
 			]

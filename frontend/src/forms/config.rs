@@ -136,6 +136,7 @@ impl ConfigForm {
 			}
 			Msg::Stop => {
 				self.started = false;
+				self.paused = false;
 				return Action::Stop;
 			}
 			Msg::Pause => {
@@ -239,20 +240,6 @@ impl ConfigForm {
 		Some((self.extract_initial()?, self.extract_config()?))
 	}
 
-	pub fn view_start_stop(&self) -> Node<Msg> {
-		match self.started {
-			true => self.stop.view(false),
-			false => self.start.view(false),
-		}
-	}
-
-	pub fn view_pause_resume(&self) -> Node<Msg> {
-		match self.paused {
-			true => self.resume.view(!self.started),
-			false => self.pause.view(!self.started),
-		}
-	}
-
 	pub fn view(&self) -> Node<Msg> {
 		div![
 			C!["p-6"],
@@ -303,9 +290,11 @@ impl ConfigForm {
 			self.m.view(false).map_msg(Msg::M),
 			div![
 				C!["buttons pt-4"],
-				self.view_start_stop(),
-				self.view_pause_resume(),
-				self.update.view(!self.started),
+				self.start.view(false, self.started),
+				self.stop.view(false, !self.started),
+				self.resume.view(!self.started, !self.paused),
+				self.pause.view(!self.started, self.paused),
+				self.update.view(!self.started, false),
 			]
 		]
 	}

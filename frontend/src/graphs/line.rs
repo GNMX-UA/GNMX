@@ -3,7 +3,7 @@ use crate::GraphData;
 use plotters::prelude::*;
 use plotters_canvas::CanvasBackend;
 use seed::*;
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::ops::Range;
 
 pub fn draw(
@@ -11,12 +11,11 @@ pub fn draw(
 	history: &[(u64, GraphData)],
 	map: impl Fn(&GraphData) -> f64,
 	range: Range<f64>,
-	title: &str
+	title: &str,
 ) -> Option<()> {
 	let backend = CanvasBackend::new(canvas_id).expect("cannot find canvas");
 	let root = backend.into_drawing_area();
 	let font: FontDesc = ("sans-serif", 20.0).into();
-
 
 	root.fill(&WHITE).ok()?;
 
@@ -25,7 +24,7 @@ pub fn draw(
 		.caption(title, font)
 		.x_label_area_size(30)
 		.y_label_area_size(30)
-		.build_cartesian_2d(0..history.last().unwrap().0, range)
+		.build_cartesian_2d(history.first().unwrap().0..history.last().unwrap().0, range)
 		.ok()?;
 
 	// This line will hang if y range is 0.0 .. 0.0, this is a plotters bug probably
@@ -34,13 +33,15 @@ pub fn draw(
 		.disable_x_mesh()
 		.disable_y_mesh()
 		.x_labels(10)
-		.y_labels(3)
+		.y_labels(5)
 		.draw()
 		.ok()?;
 
+	let step = (history.len() / 1000) + 1;
+
 	chart
 		.draw_series(LineSeries::new(
-			history.iter().map(|(tick, data)| (*tick, map(data))),
+			history.iter().step_by(step).map(|(tick, data)| (*tick, map(data))),
 			&COLORS[6],
 		))
 		.ok()?;

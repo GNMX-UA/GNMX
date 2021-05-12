@@ -55,15 +55,27 @@ impl<Msg: 'static> Button<Msg> {
         }
     }
 
-    pub fn view(&self, disabled: bool) -> Node<Msg> {
+    pub fn view(&self, disabled: bool, hidden: bool) -> Node<Msg> {
         let func = self.on_click.clone();
-
         button![
             C!["button", self.style],
             ev(Ev::Click, move |_| func()),
             attrs! {At::Disabled => disabled.as_at_value()},
+            IF!(hidden => style! {St::Display => "none"}),
             span![C!["icon", "is-small"], i![C!["fas", self.icon]]],
             IF!(!self.text.is_empty() => span![self.text])
         ]
+    }
+
+    pub fn show(&self) -> Node<Msg> {
+        self.view(false, false)
+    }
+
+    pub fn disabled(&self) -> Node<Msg> {
+        self.view(true, false)
+    }
+
+    pub fn hidden(&self) -> Node<Msg> {
+        self.view(true, true)
     }
 }

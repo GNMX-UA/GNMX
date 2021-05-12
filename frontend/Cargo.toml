@@ -19,6 +19,7 @@ plotters-canvas = "^0.3.*"
 seed = "0.8"
 chrono = "0.4"
 serde = "1.0"
+ord_subset = "3"
 
 wasm-timer = "0.2"
 web-sys = {version = "0.3", features = ["HtmlDivElement"]}

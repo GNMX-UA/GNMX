@@ -12,8 +12,9 @@ use rand::seq::SliceRandom;
 use simulation::{init, patch::Patch, step, Config, InitConfig, TempEnum};
 
 static ERROR: &str = "Internal server error, an illegal message was received.";
-static DROPPED: &str = "The receiver or sender in the simulation thread were dropped, most likely due to a crash, please restart the simulation.";
+static DROPPED: &str = "The receiver on the simulation thread were dropped, most likely due to a crash. Please refresh the page or restart.";
 static NAN: &str = "Encountered NaN in loci or population size has become 0, stopping simulation.";
+static WS: &str = "Websocket was closed while the simulation thread was still running, stopping simulation.";
 
 static SAMPLE_SIZE: usize = 100;
 static INTERVAL: u64 = 100;
@@ -48,6 +49,7 @@ pub enum Notification {
 pub enum Response {
 	Stopped,
 	Started,
+	Info(String),
 	State(u64, GraphData),
 	Error(String),
 }
@@ -99,12 +101,33 @@ fn extract_graph_data(patches: &[(Patch, f64)]) -> Option<GraphData> {
 	})
 }
 
+fn notify(notifier: &std::sync::mpsc::Sender<Notification>, notification: Notification) {
+	if let Err(_) = notifier.send(notification) {
+		error!("{}", DROPPED)
+	}
+}
+
+async fn respond(responder: &mpsc::Sender<Response>, response: Response) {
+	if let Err(_) = responder.send(response).await {
+		error!("{}", WS)
+	}
+}
+
+fn blocking_respond(responder: &mpsc::Sender<Response>, response: Response) {
+	if let Err(_) = responder.blocking_send(response) {
+		error!("{}", WS)
+	}
+}
+
 fn simulate(
 	initial: InitConfig,
 	mut config: Config,
 	receiver: std::sync::mpsc::Receiver<Notification>,
 	sender: mpsc::Sender<Response>,
-) -> std::sync::mpsc::Receiver<Notification> {
+) {
+	blocking_respond(&sender, Response::Started);
+	info!("new simulation thread started");
+
 	let ticks = initial.t_max.unwrap_or(u64::MAX);
 	let mut state = init(initial).unwrap();
 
@@ -113,19 +136,16 @@ fn simulate(
 	let mut last = Instant::now();
 	let interval = Duration::from_millis(INTERVAL);
 
-	sender.blocking_send(Response::Started).unwrap();
-	info!("simulation started");
-
 	loop {
 		if state.tick > ticks {
-			info!("simulation ended");
-			return receiver;
+			blocking_respond(&sender, Response::Info("Simulation has ended successfully".to_string()));
+			return;
 		}
 
 		match receiver.try_recv() {
 			Err(std::sync::mpsc::TryRecvError::Disconnected) => {
-				info!("simulation stopped");
-				return receiver;
+				blocking_respond(&sender, Response::Info("Simulation was successfully stopped".to_string()));
+				return;
 			}
 			Ok(Notification::Update(new)) => config = new,
 			Ok(Notification::Pause) => paused = true,
@@ -145,14 +165,10 @@ fn simulate(
 		if last.elapsed() > interval {
 			debug!("sending state {}", state.tick);
 			std::thread::yield_now();
-
 			last = Instant::now();
-			let data = extract_graph_data(&state.patches).expect(NAN);
 
-			if let Err(_) = sender.blocking_send(Response::State(state.tick, data)) {
-				info!("{}", DROPPED);
-				return receiver;
-			}
+			let data = extract_graph_data(&state.patches).expect(NAN);
+			blocking_respond(&sender, Response::State(state.tick, data));
 		}
 	}
 }
@@ -178,8 +194,8 @@ async fn receive(connection: WebSocket) {
 						t_max: None,
 						kind: TempEnum::Default,
 						patches: 5,
-						individuals: 10000,
-						loci: 500,
+						individuals: 100,
+						loci: 5,
 					};
 
 					let (notif_sender, notif_receiver) = std::sync::mpsc::channel();
@@ -188,29 +204,20 @@ async fn receive(connection: WebSocket) {
 					let cloned = responder.clone();
 					std::thread::spawn(move || simulate(initial, config, notif_receiver, cloned));
 				}
-				(Query::Stop, sim_data) => {
-					*sim_data = None;
+				(Query::Stop, notifier) => {
+					*notifier = None;
+					respond(&responder, Response::Stopped).await
 				}
 				(Query::Update(config), Some(notifier)) => {
-					if let Err(_) = notifier.send(Notification::Update(config)) {
-						error!("{}", DROPPED)
-					}
+					notify(notifier, Notification::Update(config))
 				}
 				(Query::Pause, Some(notifier)) => {
-					if let Err(_) = notifier.send(Notification::Pause) {
-						error!("{}", DROPPED)
-					}
+					notify(notifier, Notification::Pause)
 				}
 				(Query::Resume, Some(notifier)) => {
-					if let Err(_) = notifier.send(Notification::Resume) {
-						error!("{}", DROPPED)
-					}
+					notify(notifier, Notification::Resume)
 				}
-				_ => {
-					if let Err(err) = responder.send(Response::Error(ERROR.to_string())).await {
-						error!("{}", err)
-					}
-				}
+				_ => respond(&responder, Response::Error(ERROR.to_string())).await,
 			}
 		} else {
 			// TODO: also handle disconnect instead of this error
