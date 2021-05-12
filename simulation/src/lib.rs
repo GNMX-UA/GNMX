@@ -1,11 +1,16 @@
 use core::ptr;
-use std::ops::{Deref, DerefMut};
+use std::{
+	ops::{Deref, DerefMut},
+	thread::sleep_ms,
+};
 
 use itertools::izip;
 use rand::{prelude::SliceRandom, thread_rng, Rng};
 use rand_distr::{Bernoulli, Binomial, Distribution, Normal, Uniform, WeightedAliasIndex};
 use serde::{Deserialize, Serialize};
 use tinyvec::{tiny_vec, TinyVec};
+
+mod test;
 
 // TODO juvenile/adult
 // TODO dispersal matrix
@@ -26,6 +31,16 @@ pub struct Individual {
 
 impl Individual {
 	pub fn phenotype(&self) -> f64 { self.loci.iter().sum() }
+}
+
+impl Deref for Individual {
+	type Target = TinyVec<[f64; 10]>;
+
+	fn deref(&self) -> &Self::Target { &self.loci }
+}
+
+impl DerefMut for Individual {
+	fn deref_mut(&mut self) -> &mut Self::Target { &mut self.loci }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -54,7 +69,7 @@ impl Patch {
 
 	pub fn random_env(size: usize) -> Vec<f64> {
 		let mut rng = thread_rng();
-		let distr = Uniform::new(0.0, 1.0);
+		let distr = Uniform::new(-1.0, 1.0);
 		distr.sample_iter(&mut rng).take(size).collect()
 	}
 }
@@ -124,6 +139,7 @@ pub struct State {
 }
 
 impl State {
+	/// calculate amount of offspring per individual per patch
 	pub fn reproduction(&self, r_max: f64, selection_sigma: f64) -> Vec<Vec<f64>> {
 		let mut reproductive_success = Vec::with_capacity(self.patches.len());
 		for (patch, env) in &self.patches {
@@ -146,6 +162,7 @@ impl State {
 		reproductive_success
 	}
 
+	/// calculate amount of deaths per patch
 	pub fn adult_death(&mut self, gamma: f64) -> Vec<usize> {
 		let mut rng = thread_rng();
 		let mut death = Vec::with_capacity(self.patches.len());
@@ -163,6 +180,7 @@ impl State {
 		death
 	}
 
+	/// create new generation by cloning as many individuals in a patch as there are deaths * 2
 	pub fn density_regulation(
 		&self,
 		reproductive_success: Vec<Vec<f64>>,
@@ -189,16 +207,19 @@ impl State {
 		new_generation
 	}
 
-	pub fn recombination(&self, mut new_generation: Vec<Patch>, rec: f64) -> Vec<Patch> {
-		let k = self.patches[0].0[0].loci.len() / 2; //TODO proper
+	/// produce gametes with recombination and then join every two gametes together for every patch
+	/// results in new generation with as many individuals as deaths in the patch
+	pub fn recombination(mut new_generation: Vec<Patch>, rec: f64) -> Vec<Patch> {
+		let k = new_generation[0][0].len() / 2; //TODO proper
 		// rec = 1-(1-locus_rec)^(k-1)
-		let locus_rec = 1.0 - (1.0 / (k as f64 - 1.0) * (1.0 - rec).ln()).exp();
+		// TODO k -1
+		let locus_rec = 1.0 - (1.0 / ((k - 1) as f64) * (1.0 - rec).ln()).exp();
 		let mut rng = thread_rng();
 		let distr = Bernoulli::new(locus_rec).unwrap();
 		let swapped = Bernoulli::new(0.5).unwrap();
 		for patch in &mut new_generation {
 			for individual in &mut **patch {
-				let (loci1, loci2) = individual.loci.split_at_mut(k);
+				let (loci1, loci2) = individual.split_at_mut(k);
 				let mut swapped = swapped.sample(&mut rng);
 				for (locus1, locus2) in loci1.iter_mut().zip(&*loci2) {
 					if distr.sample(&mut rng) {
@@ -213,12 +234,12 @@ impl State {
 			for i in 0 .. len {
 				unsafe {
 					let individual = &mut *(patch.get_unchecked_mut(i) as *mut Individual);
-					individual.loci[.. k].copy_from_slice(&patch[2 * i].loci[.. k]);
-					individual.loci[k ..].copy_from_slice(&patch[(2 * i) + 1].loci[.. k]);
+					individual[.. k].copy_from_slice(&patch[2 * i][.. k]);
+					individual[k ..].copy_from_slice(&patch[(2 * i) + 1][.. k]);
 				}
 			}
 			patch.resize(
-				len / 2,
+				len,
 				Individual {
 					loci: Default::default(),
 				},
@@ -227,6 +248,7 @@ impl State {
 		new_generation
 	}
 
+	/// half the new generation in every patch
 	pub fn haploid_generation(mut new_generation: Vec<Patch>) -> Vec<Patch> {
 		for patch in &mut new_generation {
 			let len = patch.len() / 2;
@@ -240,6 +262,8 @@ impl State {
 		new_generation
 	}
 
+	/// determine for every individual in the new generation if it will disperse
+	/// then shuffle all the dispersing individuals around
 	pub fn dispersal(mut new_generation: Vec<Patch>, m: f64) -> Vec<Patch> {
 		let mut rng = thread_rng();
 		let distr = Bernoulli::new(m).unwrap();
@@ -259,6 +283,7 @@ impl State {
 		new_generation
 	}
 
+	/// mutate the value of every locus in every individual in every patch of the new generation
 	pub fn mutation(
 		mut new_generation: Vec<Patch>,
 		mutation_mu: f64,
@@ -268,6 +293,7 @@ impl State {
 		let mut rng = thread_rng();
 
 		let distr = Bernoulli::new(mutation_mu).unwrap();
+		// TODO option to gui
 		// fixed
 		// let up_down = Bernoulli::new(0.5).unwrap();
 		// normal
@@ -275,7 +301,7 @@ impl State {
 
 		for patch in &mut new_generation {
 			for individual in &mut **patch {
-				for locus in &mut individual.loci {
+				for locus in &mut **individual {
 					if distr.sample(&mut rng) {
 						// fixed
 						// *locus +=
@@ -289,6 +315,7 @@ impl State {
 		new_generation
 	}
 
+	/// replace the old generation with the new one
 	fn update(&mut self, new_generation: Vec<Patch>) {
 		for (new_patch, (patch, _)) in new_generation.into_iter().zip(&mut self.patches) {
 			patch.extend(new_patch);
@@ -331,7 +358,7 @@ pub fn step(state: &mut State, config: &Config) {
 	let death = state.adult_death(config.gamma);
 	let mut new_generation = state.density_regulation(reproductive_success, &death);
 	if config.diploid {
-		new_generation = state.recombination(new_generation, config.rec);
+		new_generation = State::recombination(new_generation, config.rec);
 	} else {
 		new_generation = State::haploid_generation(new_generation);
 	}
@@ -342,18 +369,12 @@ pub fn step(state: &mut State, config: &Config) {
 		config.mutation_sigma,
 		config.mutation_step,
 	);
-	// TODO remove
+	// TODO move to better place with expansion
 	for ((patch, _), death) in state.patches.iter_mut().zip(death) {
 		let len = patch.len() - death;
 		patch.resize(len, Default::default());
 	}
 	state.update(new_generation);
-
-	println!(
-		"{:?}",
-		state.patches.iter().map(|x| &x.1).collect::<Vec<_>>()
-	);
-	std::thread::sleep_ms(300);
 }
 
 #[inline]

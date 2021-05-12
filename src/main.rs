@@ -172,7 +172,7 @@ async fn receive(connection: WebSocket) {
 						kind:        TempEnum::Default,
 						patches:     5,
 						individuals: 10000,
-						loci:        500,
+						loci:        10,
 					};
 
 					let (response_sender, response_receiver) = mpsc::channel(128);
