@@ -9,4 +9,5 @@ pub mod autocomplete;
 pub mod select;
 pub mod checkbox;
 pub mod slider;
+pub mod toggle;
 
