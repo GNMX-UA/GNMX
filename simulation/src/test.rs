@@ -1,6 +1,62 @@
 #[cfg(test)]
 mod tests {
+	use itertools::Itertools;
+
 	use crate::*;
+
+	#[test]
+	fn step_test() {
+		let e = vec![0.5; 8].into_iter();
+		let p = vec![
+			Patch::new(vec![
+				Individual {
+					loci: tiny_vec![0.1, 0.1],
+				};
+				240 / 8
+			]);
+			8
+		];
+		let mut state = State {
+			tick:    0,
+			patches: p.clone().into_iter().zip(e).collect(),
+		};
+		let mut config = Config {
+			mutation_mu:     0.001,
+			mutation_sigma:  0.01,
+			mutation_step:   0.01,
+			rec:             0.01,
+			r_max:           1000.0,
+			selection_sigma: 0.3,
+			gamma:           0.0,
+			diploid:         false,
+			m:               1.0,
+		};
+
+		let x = State::mutation(
+			p,
+			config.mutation_mu,
+			config.mutation_sigma,
+			config.mutation_step,
+		);
+		for i in 0 .. 10000 {
+			step(&mut state, &config);
+			println!(
+				"{}",
+				state
+					.patches
+					.iter()
+					.map(|(x, y)| x.individuals.iter().map(|x| x.phenotype()).sum::<f64>())
+					.sum::<f64>() / 240.0
+			);
+		}
+	}
+
+	#[test]
+	fn distr() {
+		let distr = WeightedAliasIndex::new(vec![0.0, 200.0, 400.0]).unwrap();
+		let x = distr.sample_iter(thread_rng()).take(1000).counts();
+		dbg!(x);
+	}
 
 	#[test]
 	fn reproduction() {

@@ -147,14 +147,14 @@ impl State {
 			for individual in &**patch {
 				// r(y, theta) = r_max*e^(-(theta - y)^2/(2*sigma^2)
 
-				// use std::f64::consts::PI;
-				// let offspring = ((r_max / (selection_sigma * (2.0*PI).sqrt())).ln()
-				// 	- ((&patch.environment - individual.phenotype()).powi(2)
-				// 		/ (2.0 * selection_sigma.powi(2)))).exp();
-
-				let offspring = (r_max.ln()
+				use std::f64::consts::PI;
+				let offspring = ((r_max / (selection_sigma * (2.0 * PI).sqrt())).ln()
 					- ((env - individual.phenotype()).powi(2) / (2.0 * selection_sigma.powi(2))))
 				.exp();
+
+				// let offspring = (r_max.ln()
+				// 	- ((env - individual.phenotype()).powi(2) / (2.0 * selection_sigma.powi(2))))
+				// .exp();
 				patch_success.push(offspring);
 			}
 			reproductive_success.push(patch_success);
@@ -167,7 +167,6 @@ impl State {
 		let mut rng = thread_rng();
 		let mut death = Vec::with_capacity(self.patches.len());
 		for (patch, _) in &mut self.patches {
-			patch.shuffle(&mut rng);
 			let patch_alive = Binomial::new(patch.len() as u64, gamma)
 				.unwrap()
 				.sample(&mut rng) as usize;
@@ -354,6 +353,13 @@ pub fn init(init_config: InitConfig) -> Result<State, &'static str> {
 
 pub fn step(state: &mut State, config: &Config) {
 	// (config.environment_function)(&mut state.patches, state.tick);
+	for p in &mut state.patches {
+		p.1 = if thread_rng().gen_bool(0.5) {
+			0.5
+		} else {
+			-0.5
+		};
+	}
 	let reproductive_success = state.reproduction(config.r_max, config.selection_sigma);
 	let death = state.adult_death(config.gamma);
 	let mut new_generation = state.density_regulation(reproductive_success, &death);
@@ -371,6 +377,7 @@ pub fn step(state: &mut State, config: &Config) {
 	);
 	// TODO move to better place with expansion
 	for ((patch, _), death) in state.patches.iter_mut().zip(death) {
+		patch.shuffle(&mut thread_rng());
 		let len = patch.len() - death;
 		patch.resize(len, Default::default());
 	}
