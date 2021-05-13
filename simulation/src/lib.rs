@@ -1,5 +1,6 @@
 use core::ptr;
 use std::{
+	f64::consts::PI,
 	ops::{Deref, DerefMut},
 	thread::sleep_ms,
 };
@@ -11,18 +12,6 @@ use serde::{Deserialize, Serialize};
 use tinyvec::{tiny_vec, TinyVec};
 
 mod test;
-
-// TODO juvenile/adult
-// TODO dispersal matrix
-// TODO init
-
-// possible extensions:
-// no juvenile/adult carrying capacity (= 1/n)
-// dispersal chance not equal (no pool)
-// mutation_mu/sigma per trait
-// measuring intervals, histint
-// theta vector
-// phenotype is not sum -> use inner product
 
 #[derive(Clone, Debug, Serialize, Deserialize, Default)]
 pub struct Individual {
@@ -100,15 +89,10 @@ pub struct InitConfig {
 	pub loci:        usize,
 }
 
-// #[derive(Clone, Debug, Serialize, Deserialize)]
-// pub struct InitConfig {
-// 	// max ticks, unlimited if None (=100000)
-// 	pub t_max:   Option<u64>,
-// 	// population size can change (=6000)
-// 	// number of loci (half if diploid) cannot change (=4)
-// 	// patch number cannot change
-// 	pub patches: Vec<Patch>,
-// }
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub enum Environment {
+	Default,
+}
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Config {
@@ -130,6 +114,8 @@ pub struct Config {
 	pub diploid:         bool,
 	// dispersal parameter
 	pub m:               f64,
+	/* environment update function
+	 * pub environment:     Environment, */
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -139,6 +125,13 @@ pub struct State {
 }
 
 impl State {
+	// update the environment
+	pub fn environment(&mut self, environment: &Environment, tick: u64) {
+		match environment {
+			Environment::Default => {},
+		}
+	}
+
 	/// calculate amount of offspring per individual per patch
 	pub fn reproduction(&self, r_max: f64, selection_sigma: f64) -> Vec<Vec<f64>> {
 		let mut reproductive_success = Vec::with_capacity(self.patches.len());
@@ -147,7 +140,6 @@ impl State {
 			for individual in &**patch {
 				// r(y, theta) = r_max*e^(-(theta - y)^2/(2*sigma^2)
 
-				use std::f64::consts::PI;
 				let offspring = ((r_max / (selection_sigma * (2.0 * PI).sqrt())).ln()
 					- ((env - individual.phenotype()).powi(2) / (2.0 * selection_sigma.powi(2))))
 				.exp();
@@ -171,10 +163,6 @@ impl State {
 				.unwrap()
 				.sample(&mut rng) as usize;
 			death.push(patch.len() - patch_alive);
-			// TODO add back in
-			// patch
-			// 	.individuals
-			// 	.resize(patch_alive, Individual { loci: vec![] });
 		}
 		death
 	}
@@ -190,7 +178,6 @@ impl State {
 			izip!(&self.patches, reproductive_success, death)
 		{
 			let distr = if patch_success.iter().sum::<f64>() > 0.0 {
-				// TODO vec empty
 				WeightedAliasIndex::new(patch_success).unwrap()
 			} else {
 				WeightedAliasIndex::new(vec![1.0; patch_success.len()]).unwrap()
@@ -209,9 +196,7 @@ impl State {
 	/// produce gametes with recombination and then join every two gametes together for every patch
 	/// results in new generation with as many individuals as deaths in the patch
 	pub fn recombination(mut new_generation: Vec<Patch>, rec: f64) -> Vec<Patch> {
-		let k = new_generation[0][0].len() / 2; //TODO proper
-		// rec = 1-(1-locus_rec)^(k-1)
-		// TODO k -1
+		let k = new_generation[0][0].len() / 2;
 		let locus_rec = 1.0 - (1.0 / ((k - 1) as f64) * (1.0 - rec).ln()).exp();
 		let mut rng = thread_rng();
 		let distr = Bernoulli::new(locus_rec).unwrap();
@@ -292,7 +277,6 @@ impl State {
 		let mut rng = thread_rng();
 
 		let distr = Bernoulli::new(mutation_mu).unwrap();
-		// TODO option to gui
 		// fixed
 		// let up_down = Bernoulli::new(0.5).unwrap();
 		// normal
@@ -315,9 +299,12 @@ impl State {
 	}
 
 	/// replace the old generation with the new one
-	fn update(&mut self, new_generation: Vec<Patch>) {
-		for (new_patch, (patch, _)) in new_generation.into_iter().zip(&mut self.patches) {
-			patch.extend(new_patch);
+	fn update(&mut self, new_generation: Vec<Patch>, death: Vec<usize>) {
+		for ((patch, _), new, death) in izip!(&mut self.patches, new_generation, death) {
+			patch.shuffle(&mut thread_rng());
+			let len = patch.len() - death;
+			patch.resize(len, Default::default());
+			patch.extend(new);
 		}
 	}
 }
@@ -336,30 +323,11 @@ pub fn init(init_config: InitConfig) -> Result<State, &'static str> {
 		patches: p.zip(e).collect(),
 	};
 
-	// let mut state = State {
-	// 	tick:    0,
-	// 	patches: vec![],
-	// };
-	//
-	// state.patches.push((
-	// 	Patch::new(vec![Individual {
-	// 		loci: tiny_vec!(0.5, 0.7),
-	// 	}]),
-	// 	0.5,
-	// ));
-
 	Ok(state)
 }
 
 pub fn step(state: &mut State, config: &Config) {
-	// (config.environment_function)(&mut state.patches, state.tick);
-	for p in &mut state.patches {
-		p.1 = if thread_rng().gen_bool(0.5) {
-			0.5
-		} else {
-			-0.5
-		};
-	}
+	// state.environment(&config.environment, state.tick);
 	let reproductive_success = state.reproduction(config.r_max, config.selection_sigma);
 	let death = state.adult_death(config.gamma);
 	let mut new_generation = state.density_regulation(reproductive_success, &death);
@@ -375,13 +343,7 @@ pub fn step(state: &mut State, config: &Config) {
 		config.mutation_sigma,
 		config.mutation_step,
 	);
-	// TODO move to better place with expansion
-	for ((patch, _), death) in state.patches.iter_mut().zip(death) {
-		patch.shuffle(&mut thread_rng());
-		let len = patch.len() - death;
-		patch.resize(len, Default::default());
-	}
-	state.update(new_generation);
+	state.update(new_generation, death);
 }
 
 #[inline]
