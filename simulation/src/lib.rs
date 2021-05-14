@@ -517,7 +517,7 @@ impl State {
 pub fn init(init_config: InitConfig, env: Environment) -> Result<State, &'static str> {
 	let patches = init_config.patches;
 	let individuals = init_config.individuals;
-	let loci = init_config.loci;
+	let loci = init_config.loci * 2;
 
 	let patch_size = individuals / patches;
 	let p = match init_config.kind {
