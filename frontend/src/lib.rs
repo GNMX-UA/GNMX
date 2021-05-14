@@ -7,9 +7,8 @@ mod graphs;
 use seed::{prelude::*, *};
 
 use crate::api::{Config, InitConfig};
-use crate::forms::selection::SelectionForm;
 use crate::forms::{ConfigForm, InitConfigForm, SimulationForm};
-use crate::graphs::scheduler::{DrawScheduler, GraphData};
+use crate::graphs::scheduler::{DrawScheduler, GraphData, Tab};
 
 use crate::components::Button;
 use plotters_canvas::CanvasBackend;
@@ -17,6 +16,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::future::Future;
 use std::ops::Range;
+use crate::forms::gamer::GamerConfigForm;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum Query {
@@ -39,6 +39,7 @@ pub enum Response {
 #[derive(Debug)]
 pub enum Msg {
 	Config(crate::forms::config::Msg),
+	GamerConfig(crate::forms::gamer::Msg),
 	InitConfig(crate::forms::init::Msg),
 	SimulationConfig(crate::forms::simulation::Msg),
 
@@ -47,6 +48,7 @@ pub enum Msg {
 	Pause,
 	Resume,
 
+	Scheduler(Tab),
 	Delete(usize),
 	Resize,
 	Ws(WebSocketMessage),
@@ -54,6 +56,7 @@ pub enum Msg {
 
 struct Model {
 	config: ConfigForm,
+	gamer_config: GamerConfigForm,
 	init: InitConfigForm,
 	simulation: SimulationForm,
 
@@ -77,6 +80,7 @@ fn init(_: Url, orders: &mut impl Orders<Msg>) -> Model {
 	orders.stream(streams::window_event(Ev::Resize, |_| Msg::Resize));
 	Model {
 		config: ConfigForm::new(),
+		gamer_config: GamerConfigForm::new(),
 		init: InitConfigForm::new(),
 		simulation: SimulationForm::new(),
 
@@ -119,14 +123,24 @@ fn update(msg: Msg, model: &mut Model, orders: &mut impl Orders<Msg>) {
 			if let Some(config) = model.config.extract() {
 				send_json(model, &Query::Update(config));
 			}
+		},
+		Msg::GamerConfig(msg) => {
+			let _ = model.gamer_config.update(msg, &mut orders.proxy(Msg::GamerConfig));
+			if let Some(config) = model.gamer_config.extract() {
+				send_json(model, &Query::Update(config));
+			}
 		}
 		Msg::InitConfig(msg) => {
 			let _ = model.init.update(msg, &mut orders.proxy(Msg::InitConfig));
 		}
 		Msg::SimulationConfig(msg) => {
-			let _ = model
+			if model
 				.simulation
-				.update(msg, &mut orders.proxy(Msg::SimulationConfig));
+				.update(msg, &mut orders.proxy(Msg::SimulationConfig)) {
+				if let Some(config) = model.simulation.extract() {
+					model.gamer = config.gamer_mode
+				}
+			}
 		}
 		Msg::Start => match (model.init.extract(), model.config.extract()) {
 			(Some(init), Some(config)) => send_json(model, &Query::Start(init, config)),
@@ -142,11 +156,15 @@ fn update(msg: Msg, model: &mut Model, orders: &mut impl Orders<Msg>) {
 		Msg::Pause => {
 			model.paused = true;
 			send_json(model, &Query::Pause)
-		},
+		}
 		Msg::Resume => {
 			model.paused = false;
 			send_json(model, &Query::Resume)
-		},
+		}
+		Msg::Scheduler(msg) =>
+			model
+			.scheduler
+			.update(msg, &mut orders.proxy(Msg::Scheduler)),
 		Msg::Delete(id) => {
 			model.messages.remove(&id);
 		}
@@ -158,8 +176,7 @@ fn update(msg: Msg, model: &mut Model, orders: &mut impl Orders<Msg>) {
 			}
 			Ok(Response::Started) => {
 				model.started = true;
-				log!("simulation started")
-			},
+			}
 			Ok(Response::Info(info)) => handle_notification(model, info, false),
 			Ok(Response::Error(error)) => handle_notification(model, error, true),
 			Ok(Response::Stopped) => {
@@ -181,7 +198,7 @@ fn update(msg: Msg, model: &mut Model, orders: &mut impl Orders<Msg>) {
 
 fn view_messages(messages: &HashMap<usize, (bool, String)>) -> Node<Msg> {
 	div![
-		style!{St::Position => "absolute"},
+		style! {St::Position => "absolute"},
 		messages
 			.iter()
 			.map(|(id, (is_error, msg))| {
@@ -202,20 +219,22 @@ fn view(model: &Model) -> Node<Msg> {
 		div![
 			C!["column is-8 ml-4 mt-5"],
 			view_messages(&model.messages),
-			model.scheduler.view(),
+			model.scheduler.view().map_msg(Msg::Scheduler),
 		],
 		div![
 			C!["column p-6"],
 			style! {St::BoxShadow => "-10px 0px 10px 1px #eeeeee"},
 			style! {St::OverflowY => "auto", St::Height => "100vh"},
-
 			model.init.view(model.started).map_msg(Msg::InitConfig),
 			hr![],
-			model.config.view().map_msg(Msg::Config),
-			hr![],
+			match model.gamer {
+				true => model.gamer_config.view().map_msg(Msg::GamerConfig),
+				false => model.config.view().map_msg(Msg::Config),
+			}
+
+	,		hr![],
 			model.simulation.view().map_msg(Msg::SimulationConfig),
 			div![C!["pb-4"]],
-
 			div![
 				C!["buttons"],
 				model.start.view(false, model.started),
@@ -225,7 +244,6 @@ fn view(model: &Model) -> Node<Msg> {
 			],
 			div![C!["pb-2"]],
 		],
-
 	]
 }
 

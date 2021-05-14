@@ -1,3 +1,5 @@
+use crate::api::{Suggestions, Suggestion};
+
 pub fn make_suggestions(names: &[&str]) -> Suggestions {
     names
         .iter()

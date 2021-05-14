@@ -5,6 +5,7 @@ use crate::{
 	components::Button,
 	fields::{slider::SliderField, Field, InputField, SelectField},
 };
+use crate::api::make_suggestions;
 
 #[derive(Clone, Debug)]
 pub enum Msg {
@@ -28,7 +29,7 @@ impl InitConfigForm {
 		let kind_suggestions = make_suggestions(&["uniform", "normal", "equal"]);
 
 		Self {
-			t_max:       InputField::new("Ticks", false)
+			t_max:       InputField::new("Ticks", true)
 				.with_placeholder("leave empty to run indefinitely"),
 			kind:        SelectField::new(
 				"Initial population distribution",

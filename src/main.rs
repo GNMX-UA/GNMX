@@ -9,7 +9,8 @@ use warp::ws::{Message, WebSocket};
 use warp::{Filter, Reply};
 
 use rand::seq::SliceRandom;
-use simulation::{init, step, Config, InitConfig, Patch};
+use simulation::{init, step, Config, InitConfig, Patch, Individual};
+use rand::prelude::IteratorRandom;
 
 static ERROR: &str = "Internal server error, an illegal message was received.";
 static DROPPED: &str = "The receiver on the simulation thread were dropped, most likely due to a crash. Please refresh the page or restart.";
@@ -26,6 +27,7 @@ pub struct GraphData {
 	pub phenotype_distance: f64,
 	pub phenotype_sample: Vec<(usize, f64)>, // (patch_index, phenotype)
 	pub environment: Vec<f64>,
+	pub loci: Vec<Vec<(usize, f64)>>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -86,6 +88,17 @@ fn extract_graph_data(patches: &[(Patch, f64)]) -> Option<GraphData> {
 		.min_by(|(_, x), (_, y)| x.partial_cmp(y).unwrap())?
 		.1;
 
+	let individuals = patches
+		.iter()
+		.enumerate()
+		.flat_map(|(index, (patch, _))| patch.individuals.iter().map(move |indiv| (indiv, index)))
+		.choose_multiple(&mut rand::thread_rng(), SAMPLE_SIZE);
+
+	// FIXME: this is dumb, how to transpose vec of vec elegantly?
+	let loci: Vec<Vec<_>> = (0..individuals.first()?.0.loci.len())
+		.map(|index| individuals.iter().map(|(indiv, patchi)| (*patchi, indiv.loci[index])).collect())
+		.collect();
+
 	Some(GraphData {
 		phenotype_variance: variance,
 		phenotype_distance: max - min,
@@ -94,6 +107,7 @@ fn extract_graph_data(patches: &[(Patch, f64)]) -> Option<GraphData> {
 			.cloned()
 			.collect(),
 		environment: patches.iter().map(|x| x.1).collect(),
+		loci,
 	})
 }
 

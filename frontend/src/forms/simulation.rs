@@ -7,7 +7,7 @@ use crate::fields::{Field, InputField, SelectField};
 use seed::futures::StreamExt;
 
 pub struct SimulationConfig {
-    gamer_mode: bool
+    pub gamer_mode: bool
 }
 
 #[derive(Clone, Debug)]
@@ -33,7 +33,7 @@ impl SimulationForm {
         }
     }
 
-    fn extract(&self) -> Option<SimulationConfig> {
+    pub fn extract(&self) -> Option<SimulationConfig> {
         let gamer_mode = self.gamer_mode.value(true);
 
         Some(SimulationConfig{gamer_mode: gamer_mode?})

@@ -15,11 +15,11 @@ pub enum Msg {
     Rec(<InputField<f64> as Field>::Msg),
     SelectionSigma(<InputField<f64> as Field>::Msg),
     Gamma(<InputField<f64> as Field>::Msg),
-    Diploid(<CheckboxField as Field>::Msg),
+    Diploid(<InputField<bool> as Field>::Msg),
     M(<InputField<f64> as Field>::Msg),
 }
 
-pub struct ConfigForm {
+pub struct GamerConfigForm {
     mutation_mu: InputField<f64>,
     mutation_sigma: InputField<f64>,
     mutation_step: InputField<f64>,
@@ -27,11 +27,11 @@ pub struct ConfigForm {
     environment: SelectField,
     selection_sigma: InputField<f64>,
     gamma: InputField<f64>,
-    diploid: CheckboxField,
+    diploid: InputField<bool>,
     m: InputField<f64>,
 }
 
-impl ConfigForm {
+impl GamerConfigForm {
     pub fn new() -> Self {
         let kind_suggestions = make_suggestions(&["uniform", "normal", "equal"]);
 
@@ -45,7 +45,7 @@ impl ConfigForm {
             selection_sigma: InputField::new("Selection Strength (Sigma)", false).with_initial(Some(0.01))
                 .with_validator(|&value| (value <= 0.0).then(|| "Number must be strictly positive.".to_string())),
             gamma: InputField::new("Generation Overlap (Gamma)", false).with_initial(Some(0.01)),
-            diploid: CheckboxField::new("Diploid", false),
+            diploid: InputField::new("Diploid", false).with_initial(Some(false)),
             m: InputField::new("Dispersal parameter (M)", false).with_initial(Some(0.01)),
         }
     }

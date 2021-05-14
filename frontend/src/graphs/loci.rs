@@ -10,6 +10,7 @@ use plotters::coord::Shift;
 pub fn draw(
 	backend: &mut DrawingArea<CanvasBackend, Shift>,
 	history: &[(u64, GraphData)],
+	locus: usize,
 	y_range: Range<f64>,
 	title: &str,
 ) -> Option<()> {
@@ -38,7 +39,7 @@ pub fn draw(
 
 	let iter = history
 		.iter()
-		.map(|(tick, data)| data.iter().map(move |(i, s)| (tick, i, s)))
+		.map(|(tick, data)|  data.loci[locus].iter().map(move |(v, p)| (tick, v, p)))
 		.flatten()
 		.map(|(t, i, s)| Circle::new((*t, *s), 2, COLORS[i % COLORS.len()].filled()))
 		.step_by(step);

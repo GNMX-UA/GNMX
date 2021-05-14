@@ -6,10 +6,16 @@ use std::time::Duration;
 use wasm_timer::Instant;
 
 use super::ordhelp::*;
-use crate::forms::selection::Selection;
-use crate::graphs::{line, pheno, environment};
+use crate::graphs::{environment, line, loci, pheno};
+use plotters::coord::Shift;
 use plotters::prelude::*;
 use seed::{prelude::*, *};
+
+#[derive(Clone, Debug)]
+pub enum Tab {
+	General,
+	Loci,
+}
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct GraphData {
@@ -17,6 +23,7 @@ pub struct GraphData {
 	pub phenotype_distance: f64,
 	pub phenotype_sample: Vec<(usize, f64)>, // (patch_index, phenotype)
 	pub environment: Vec<f64>,
+	pub loci: Vec<Vec<(usize, f64)>>,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -25,6 +32,7 @@ pub struct GraphRanges {
 	phenotype_distance: Range<f64>,
 	phenotype_sample: Range<f64>,
 	environment: Range<f64>,
+	loci: Vec<Range<f64>>,
 }
 
 pub struct DrawScheduler {
@@ -35,7 +43,9 @@ pub struct DrawScheduler {
 
 	previous: Option<(Instant, u64, Duration)>,
 	stopped: bool,
+	tab: Tab,
 }
+
 
 impl DrawScheduler {
 	pub fn new(canvas_id: &'static str) -> Self {
@@ -45,11 +55,15 @@ impl DrawScheduler {
 			ranges: Default::default(),
 			previous: None,
 			stopped: false,
+			tab: Tab::General,
 		}
 	}
 
+	pub fn update(&mut self, msg: Tab, _: &mut impl Orders<Tab>) {
+		self.tab = msg
+	}
+
 	pub fn update_data(&mut self, tick: u64, data: GraphData) -> Option<&'static str> {
-		log!("update data");
 		if self.stopped {
 			self.history.clear();
 			self.previous = None;
@@ -63,18 +77,46 @@ impl DrawScheduler {
 	}
 
 	pub fn update_size(&mut self) -> Option<&'static str> {
-		log!("update size");
 		Self::resize().err()?;
 		self.maybe_redraw()
 	}
 
 	pub fn stop(&mut self) {
-		log!("stopping");
 		self.stopped = true
 	}
 
-	pub fn view<Msg>(&self) -> Node<Msg> {
-		canvas![attrs! {At::Id => "canvas"}]
+	fn view_tabs(&self) -> Node<Tab> {
+		// FIXME: this is terrible
+		let which = match self.tab {
+			Tab::General => true,
+			Tab::Loci => false,
+		};
+
+		ul![
+			li![
+				IF!(which => C!["is-active"]),
+				a![
+					mouse_ev(Ev::Click, |_| Tab::General),
+					span![C!["icon is-small"], i![C!["fas fa-list"]]],
+					span!["General"]
+				]
+			],
+			li![
+				IF!(!which => C!["is-active"]),
+				a![
+					mouse_ev(Ev::Click, |_| Tab::Loci),
+					span![C!["icon is-small"], i![C!["fas fa-microscope"]]],
+					span!["Loci"]
+				]
+			],
+		]
+	}
+
+	pub fn view(&self) -> Vec<Node<Tab>> {
+		vec![
+			div![C!["tabs is-centered is-boxed"], self.view_tabs()],
+			canvas![attrs! {At::Id => "canvas"}],
+		]
 	}
 
 	fn maybe_redraw(&mut self) -> Option<&'static str> {
@@ -103,10 +145,17 @@ impl DrawScheduler {
 			&mut self.ranges.environment,
 			data.environment.iter().cloned(),
 		);
+		self.ranges.loci.resize(data.loci.len(), Range::default());
+
+		for index in 0..data.loci.len() {
+			range_slice_assign(
+				&mut self.ranges.loci[index],
+				data.loci[index].iter().map(|x| x.1),
+			)
+		}
 	}
 
 	fn resize() -> Result<(), &'static str> {
-		log!("resizing");
 		let canvas = window()
 			.document()
 			.ok_or("window has no document")?
@@ -121,35 +170,23 @@ impl DrawScheduler {
 			.map_err(|_| "Could not resize canvas")?;
 		canvas
 			.style()
-			.set_property("height", "100%")
+			.set_property("height", "85%")
 			.map_err(|_| "Could not resize canvas")?;
 
 		canvas.set_width(canvas.offset_width() as u32);
-		// DO NOT REMOVE THIS 10, THE JAVASCRIPT GODS HAVE CHOSEN THIS RANDOM VALUE!!
-		canvas.set_height(canvas.offset_height() as u32 - 10);
+		// DO NOT REMOVE THIS 169, THE JAVASCRIPT GODS HAVE CHOSEN THIS RANDOM VALUE!!
+		canvas.set_height(canvas.offset_height() as u32);
 
 		Ok(())
 	}
 
-	fn draw(&mut self) -> Result<(), &'static str> {
-		log!("drawing");
-		// We are lazy and just resize the thing before drawing, always
-		Self::resize()?;
-
-		let mut canvas = CanvasBackend::new(self.canvas_id).ok_or("cannot find canvas")?;
-		let root = canvas.into_drawing_area();
-		root.fill(&WHITE).map_err(|_| "could not fill with white")?;
-
+	fn draw_general_tab(
+		&self,
+		root: &mut DrawingArea<CanvasBackend, Shift>,
+	) -> Result<(), &'static str> {
 		let mut rows = root.split_evenly((4, 1));
-
-		let mut iter = rows.iter_mut();
-
-		let start = Instant::now();
-
-		let x_range = self.history.first().ok_or("0 elements")?.0..self.history.last().ok_or("0 elements")?.0;
-
 		pheno::draw(
-			iter.next().unwrap(),
+			&mut rows[0],
 			&self.history,
 			self.ranges.phenotype_sample.clone(),
 			"phenotype per patch",
@@ -157,7 +194,7 @@ impl DrawScheduler {
 		.ok_or("could not draw phenotype plot")?;
 
 		line::draw(
-			iter.next().unwrap(),
+			&mut rows[1],
 			&self.history,
 			|data| data.phenotype_variance,
 			self.ranges.phenotype_variance.clone(),
@@ -166,7 +203,7 @@ impl DrawScheduler {
 		.ok_or("could not draw phenotype plot")?;
 
 		line::draw(
-			iter.next().unwrap(),
+			&mut rows[2],
 			&self.history,
 			|data| data.phenotype_distance,
 			self.ranges.phenotype_distance.clone(),
@@ -175,21 +212,51 @@ impl DrawScheduler {
 		.ok_or("could not draw phenotype plot")?;
 
 		environment::draw(
-			iter.next().unwrap(),
+			&mut rows[3],
 			&self.history,
 			self.ranges.environment.clone(),
 			"environment per patch",
 		)
 		.ok_or("could not draw environment plot")?;
 
-		// for index in selection
-		// 	.loci
-		// 	.iter()
-		// 	.enumerate()
-		// 	.filter_map(|(index, pred)| pred.then(|| index))
-		// {
-		// 	// TODO
-		// }
+		Ok(())
+	}
+
+	fn draw_loci_tab(
+		&self,
+		root: &mut DrawingArea<CanvasBackend, Shift>,
+	) -> Result<(), &'static str> {
+		let loci = self.history.first().ok_or("No data to draw.")?.1.loci.len();
+		let mut rows = root.split_evenly((loci, 1));
+
+		for locus in 0..loci {
+			loci::draw(
+				&mut rows[locus],
+				&self.history,
+				locus,
+				self.ranges.loci[locus].clone(),
+				format!("locus #{}", locus).as_str(),
+			)
+			.ok_or("could not draw loci plot")?;
+		}
+
+		Ok(())
+	}
+
+	fn draw(&mut self) -> Result<(), &'static str> {
+		// We are lazy and just resize the thing before drawing, always
+		Self::resize()?;
+
+		let start = Instant::now();
+
+		let mut canvas = CanvasBackend::new(self.canvas_id).ok_or("cannot find canvas")?;
+		let mut root = canvas.into_drawing_area();
+		root.fill(&WHITE).map_err(|_| "could not fill with white")?;
+
+		match self.tab {
+			Tab::General => self.draw_general_tab(&mut root),
+			Tab::Loci => self.draw_loci_tab(&mut root),
+		}?;
 
 		root.present()
 			.map(|_| ())
