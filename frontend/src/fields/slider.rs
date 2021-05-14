@@ -44,8 +44,9 @@ impl Field for SliderField {
 		Some(self.value)
 	}
 
-	fn update(&mut self, msg: Self::Msg, _: &mut impl Orders<Self::Msg>) {
+	fn update(&mut self, msg: Self::Msg, _: &mut impl Orders<Self::Msg>) -> bool {
 		self.value = msg;
+		true
 	}
 
 	fn view(&self, readonly: bool) -> Vec<Node<Self::Msg>> {

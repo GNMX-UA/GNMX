@@ -52,7 +52,7 @@ impl SelectionForm {
 			Msg::Distance(msg) => self.distance.update(msg, &mut orders.proxy(Msg::Distance)),
 			Msg::Environment(msg) => self.environment.update(msg, &mut orders.proxy(Msg::Environment)),
 			Msg::Loci(msg, index) => self.loci[index].update(msg, &mut orders.proxy(move |msg| Msg::Loci(msg, index)))
-		}
+		};
 
 		self.extract()
 	}

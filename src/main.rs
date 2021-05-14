@@ -2,39 +2,33 @@ use std::time::{Duration, Instant};
 
 use futures::StreamExt;
 use log::{debug, error, info, warn};
-use rand::seq::SliceRandom;
 use serde::{Deserialize, Serialize};
-use simulation::{init, step, Config, InitConfig, Patch, TempEnum};
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
-use warp::{
-	ws::{Message, WebSocket},
-	Filter, Reply,
-};
+use warp::ws::{Message, WebSocket};
+use warp::{Filter, Reply};
+
+use rand::seq::SliceRandom;
+use simulation::{init, Patch, step, Config, InitConfig, TempEnum};
 
 static ERROR: &str = "Internal server error, an illegal message was received.";
-static DROPPED: &str = "The receiver on the simulation thread were dropped, most likely due to a \
-                        crash. Please refresh the page or restart.";
+static DROPPED: &str = "The receiver on the simulation thread were dropped, most likely due to a crash. Please refresh the page or restart.";
 static NAN: &str = "Encountered NaN in loci or population size has become 0, stopping simulation.";
-static WS: &str =
-	"Websocket was closed while the simulation thread was still running, stopping simulation.";
+static WS: &str = "Websocket was closed while the simulation thread was still running, stopping simulation.";
 
 static SAMPLE_SIZE: usize = 100;
 static INTERVAL: u64 = 100;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct GraphData {
-	population:         u64,
-	phenotype_variance: f64,
-	phenotype_distance: f64,
-
-	// (patch_index, phenotype) - max: SAMPLE_SIZE
-	phenotype_sample: Vec<(usize, f64)>,
+	pub phenotype_variance: f64,
+	pub phenotype_distance: f64,
+	pub phenotype_sample: Vec<(usize, f64)>, // (patch_index, phenotype)
+	pub environment: Vec<f64>,
 }
-
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum Query {
-	Stop,
+	Reset,
 	Start(Config),
 	Pause,
 	Resume,
@@ -91,16 +85,13 @@ fn extract_graph_data(patches: &[(Patch, f64)]) -> Option<GraphData> {
 		.1;
 
 	Some(GraphData {
-		population:         patches
-			.iter()
-			.map(|(patch, _)| patch.individuals.len())
-			.sum::<usize>() as u64,
 		phenotype_variance: variance,
 		phenotype_distance: max - min,
-		phenotype_sample:   phenotypes
+		phenotype_sample: phenotypes
 			.choose_multiple(&mut rand::thread_rng(), SAMPLE_SIZE)
 			.cloned()
 			.collect(),
+		environment: patches.iter().map(|x| x.1).collect()
 	})
 }
 
@@ -141,21 +132,15 @@ fn simulate(
 
 	loop {
 		if state.tick > ticks {
-			blocking_respond(
-				&sender,
-				Response::Info("Simulation has ended successfully".to_string()),
-			);
+			blocking_respond(&sender, Response::Info("Simulation has ended successfully".to_string()));
 			return;
 		}
 
 		match receiver.try_recv() {
 			Err(std::sync::mpsc::TryRecvError::Disconnected) => {
-				blocking_respond(
-					&sender,
-					Response::Info("Simulation was successfully stopped".to_string()),
-				);
+				blocking_respond(&sender, Response::Info("Simulation was successfully stopped".to_string()));
 				return;
-			},
+			}
 			Ok(Notification::Update(new)) => config = new,
 			Ok(Notification::Pause) => paused = true,
 			Ok(Notification::Resume) => paused = false,
@@ -200,11 +185,11 @@ async fn receive(connection: WebSocket) {
 			match (msg, &mut notifier) {
 				(Query::Start(config), None) => {
 					let initial = InitConfig {
-						t_max:       None,
-						kind:        InitialPopulation::Uniform,
-						patches:     5,
+						t_max: None,
+						kind: TempEnum::Default,
+						patches: 5,
 						individuals: 100,
-						loci:        5,
+						loci: 5,
 					};
 
 					let (notif_sender, notif_receiver) = std::sync::mpsc::channel();
@@ -212,15 +197,20 @@ async fn receive(connection: WebSocket) {
 
 					let cloned = responder.clone();
 					std::thread::spawn(move || simulate(initial, config, notif_receiver, cloned));
-				},
-				(Query::Stop, notifier) => {
+				}
+				(Query::Reset, notifier) => {
 					*notifier = None;
 					respond(&responder, Response::Stopped).await
-				},
-				(Query::Update(config), Some(notifier)) =>
-					notify(notifier, Notification::Update(config)),
-				(Query::Pause, Some(notifier)) => notify(notifier, Notification::Pause),
-				(Query::Resume, Some(notifier)) => notify(notifier, Notification::Resume),
+				}
+				(Query::Update(config), Some(notifier)) => {
+					notify(notifier, Notification::Update(config))
+				}
+				(Query::Pause, Some(notifier)) => {
+					notify(notifier, Notification::Pause)
+				}
+				(Query::Resume, Some(notifier)) => {
+					notify(notifier, Notification::Resume)
+				}
 				_ => respond(&responder, Response::Error(ERROR.to_string())).await,
 			}
 		} else {

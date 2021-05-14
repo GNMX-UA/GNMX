@@ -1,3 +1,5 @@
+/*remove scrollbar*/
+:root{ scrollbar-width: none !important }
 
 /*slider css*/
 .slider {

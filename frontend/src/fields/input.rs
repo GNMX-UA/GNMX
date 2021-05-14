@@ -4,6 +4,12 @@ use std::str::FromStr;
 use crate::fields::{Field, State};
 use std::sync::atomic::{AtomicBool, Ordering};
 
+#[derive(Clone, Debug)]
+pub enum Msg {
+    Blur,
+    Value(String)
+}
+
 #[derive(Default)]
 pub struct InputField<U: Clone + ToString + FromStr + Default>
 where
@@ -55,7 +61,7 @@ impl<U: Clone + ToString + FromStr + Default> Field for InputField<U>
 where
     <U as FromStr>::Err: ToString,
 {
-    type Msg = String;
+    type Msg = Msg;
     type Value = U;
 
     fn set(&mut self, value: Option<Self::Value>) {
@@ -72,25 +78,29 @@ where
         self.state.ok()
     }
 
-    fn update(&mut self, msg: Self::Msg, _: &mut impl Orders<Self::Msg>) {
+    fn update(&mut self, msg: Self::Msg, _: &mut impl Orders<Self::Msg>) -> bool {
         let mapper = |value: &str| match U::from_str(value) {
             Ok(u) => State::Value(u),
             Err(err) => State::Error(err.to_string()),
         };
 
-        self.state = match (msg.as_str(), &self.validator, &self.initial) {
-            ("", _, _) => State::Empty,
-            (value, _, Some(initial)) if value == initial.to_string() => {
+        self.state = match (&msg, &self.validator, &self.initial) {
+            (Msg::Value(str), _, _) if str.is_empty() => State::Empty,
+            (Msg::Value(str), _, Some(initial)) if str == &initial.to_string() => {
                 State::Value(initial.clone())
             }
-            (value, Some(validator), _) => match validator(value) {
+            (Msg::Value(str), Some(validator), _) => match validator(&str) {
                 Some(err) => State::Error(err),
-                None => mapper(value),
+                None => mapper(&str),
             },
-            (value, _, _) => mapper(value),
+            (Msg::Value(str), _, _) => mapper(&str),
+            (Msg::Blur, _, _) => return true,
         };
 
-        self.value = msg;
+        if let Msg::Value(str) = msg {
+            self.value = str;
+        }
+        false
     }
 
     fn view(&self, readonly: bool) -> Vec<Node<Self::Msg>> {
@@ -116,8 +126,10 @@ where
                 ],
                 input![
                     C!["input", IF!(danger => "is-danger")],
-                    input_ev(Ev::Input, |str| str),
-                    attrs! {At::Placeholder => &self.placeholder, At::Value => &self.value, At::ReadOnly => readonly.as_at_value()},
+                    input_ev(Ev::Input, |str| Msg::Value(str)),
+                    ev(Ev::Blur, |_| Msg::Blur),
+                    attrs! {At::Placeholder => &self.placeholder, At::Value => &self.value},
+                    IF!(readonly => attrs! {At::Disabled => ""}),
                 ],
                 IF![danger => span![C!["icon is-small is-right"], i![C!["fas", "fa-exclamation-triangle"]]]]
             ],

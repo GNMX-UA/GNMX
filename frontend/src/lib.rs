@@ -8,9 +8,10 @@ use seed::{prelude::*, *};
 
 use crate::api::{Config, InitConfig};
 use crate::forms::selection::SelectionForm;
-use crate::forms::{Action, ConfigForm};
+use crate::forms::{ConfigForm, InitConfigForm, SimulationForm};
 use crate::graphs::scheduler::{DrawScheduler, GraphData};
 
+use crate::components::Button;
 use plotters_canvas::CanvasBackend;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -19,7 +20,7 @@ use std::ops::Range;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum Query {
-	Stop,
+	Reset,
 	Start(Config),
 	Pause,
 	Resume,
@@ -38,7 +39,14 @@ pub enum Response {
 #[derive(Debug)]
 pub enum Msg {
 	Config(crate::forms::config::Msg),
-	Selection(crate::forms::selection::Msg),
+	InitConfig(crate::forms::init::Msg),
+	SimulationConfig(crate::forms::simulation::Msg),
+
+	Start,
+	Reset,
+	Pause,
+	Resume,
+
 	Delete(usize),
 	Resize,
 	Ws(WebSocketMessage),
@@ -46,20 +54,31 @@ pub enum Msg {
 
 struct Model {
 	config: ConfigForm,
-	selection: SelectionForm,
+	init: InitConfigForm,
+	simulation: SimulationForm,
 
 	ws: WebSocket,
 	scheduler: DrawScheduler,
 
 	messages: HashMap<usize, (bool, String)>,
 	current_id: usize,
+
+	start: Button<Msg>,
+	reset: Button<Msg>,
+	pause: Button<Msg>,
+	resume: Button<Msg>,
+
+	paused: bool,
+	started: bool,
+	gamer: bool,
 }
 
 fn init(_: Url, orders: &mut impl Orders<Msg>) -> Model {
 	orders.stream(streams::window_event(Ev::Resize, |_| Msg::Resize));
 	Model {
 		config: ConfigForm::new(),
-		selection: SelectionForm::new(),
+		init: InitConfigForm::new(),
+		simulation: SimulationForm::new(),
 
 		ws: WebSocket::builder("ws://127.0.0.1:3030/ws", orders)
 			.on_message(Msg::Ws)
@@ -69,61 +88,83 @@ fn init(_: Url, orders: &mut impl Orders<Msg>) -> Model {
 
 		messages: HashMap::new(),
 		current_id: 1,
+
+		start: Button::new("start", "is-success", "fa-play", || Msg::Start),
+		reset: Button::new("reset", "is-danger is-outlined", "fa-square", || Msg::Reset),
+		pause: Button::new("pause", "is-light", "fa-pause", || Msg::Pause),
+		resume: Button::new("resume", "is-light", "fa-play", || Msg::Resume),
+
+		paused: false,
+		started: false,
+		gamer: false,
 	}
 }
 
-fn handle_action(model: &mut Model, action: Action) {
-	match action {
-		Action::Start(_, config) => {
-			model.selection.set_loci(5);
-			model.scheduler.update_selection(model.selection.extract());
-			log!(model.ws.send_json(&Query::Start(config)))
-		}
-		Action::Update(config) => log!(model.ws.send_json(&Query::Update(config))),
-		Action::Stop => {
-			model.selection.set_loci(0);
-			log!(model.ws.send_json(&Query::Stop))
-		}
-		Action::Pause => log!(model.ws.send_json(&Query::Pause)),
-		Action::Resume => log!(model.ws.send_json(&Query::Resume)),
-		Action::None => {}
-	}
+fn handle_notification(model: &mut Model, text: impl Into<String>, is_error: bool) {
+	model
+		.messages
+		.insert(model.current_id, (is_error, text.into()));
+	model.current_id += 1;
+}
+
+fn send_json(model: &mut Model, query: &Query) {
+	let _ = model.ws.send_json(query).map_err(|e| log!(e));
 }
 
 fn update(msg: Msg, model: &mut Model, orders: &mut impl Orders<Msg>) {
 	match msg {
 		Msg::Config(msg) => {
-			let action = model.config.update(msg, &mut orders.proxy(Msg::Config));
-			handle_action(model, action)
+			// TODO Add timer to reduce load on websocket maybe?
+			let _ = model.config.update(msg, &mut orders.proxy(Msg::Config));
+			if let Some(config) = model.config.extract() {
+				send_json(model, &Query::Update(config));
+			}
 		}
-		Msg::Selection(msg) => {
-				let selection = model.selection.update(msg, &mut orders.proxy(Msg::Selection));
-				model.scheduler.update_selection(selection);
+		Msg::InitConfig(msg) => {
+			let _ = model.init.update(msg, &mut orders.proxy(Msg::InitConfig));
 		}
+		Msg::SimulationConfig(msg) => {
+			let _ = model
+				.simulation
+				.update(msg, &mut orders.proxy(Msg::SimulationConfig));
+		}
+		Msg::Start => match model.config.extract() {
+			Some(config) => send_json(model, &Query::Start(config)),
+			None => handle_notification(
+				model,
+				"Cannot start simulation as some parameters are wrong",
+				true,
+			),
+		},
+		Msg::Reset => {
+			send_json(model, &Query::Reset);
+		}
+		Msg::Pause => {
+			model.paused = true;
+			send_json(model, &Query::Pause)
+		},
+		Msg::Resume => {
+			model.paused = false;
+			send_json(model, &Query::Resume)
+		},
 		Msg::Delete(id) => {
 			model.messages.remove(&id);
 		}
 		Msg::Ws(message) => match message.json::<Response>() {
 			Ok(Response::State(tick, data)) => {
 				if let Some(error) = model.scheduler.update_data(tick, data) {
-					model
-						.messages
-						.insert(model.current_id, (true, error.to_string()));
-					model.current_id += 1;
+					handle_notification(model, error, false)
 				}
 			}
-			Ok(Response::Started) => log!("simulation started"),
-			Ok(Response::Info(info)) => {
-				model.messages.insert(model.current_id, (false, info));
-				model.current_id += 1;
-			}
-			Ok(Response::Error(error)) => {
-				model.messages.insert(model.current_id, (true, error));
-				model.current_id += 1;
-			}
+			Ok(Response::Started) => {
+				model.started = true;
+				log!("simulation started")
+			},
+			Ok(Response::Info(info)) => handle_notification(model, info, false),
+			Ok(Response::Error(error)) => handle_notification(model, error, true),
 			Ok(Response::Stopped) => {
-				model.config.stop();
 				model.scheduler.stop();
+				model.started = false;
 			}
 			Err(err) => log!(err),
 		},
@@ -138,18 +179,21 @@ fn update(msg: Msg, model: &mut Model, orders: &mut impl Orders<Msg>) {
 	}
 }
 
-fn view_messages(messages: &HashMap<usize, (bool, String)>) -> Vec<Node<Msg>> {
-	messages
-		.iter()
-		.map(|(id, (is_error, msg))| {
-			let copy = *id;
-			div![
-				C!["notification" IF!(*is_error => "is-warning")],
-				button![C!["delete"], ev(Ev::Click, move |_| Msg::Delete(copy))],
-				&msg
-			]
-		})
-		.collect()
+fn view_messages(messages: &HashMap<usize, (bool, String)>) -> Node<Msg> {
+	div![
+		style!{St::Position => "absolute"},
+		messages
+			.iter()
+			.map(|(id, (is_error, msg))| {
+				let copy = *id;
+				div![
+					C!["notification" IF!(*is_error => "is-warning")],
+					button![C!["delete"], ev(Ev::Click, move |_| Msg::Delete(copy))],
+					&msg
+				]
+			})
+			.collect::<Vec<_>>()
+	]
 }
 
 fn view(model: &Model) -> Node<Msg> {
@@ -157,12 +201,30 @@ fn view(model: &Model) -> Node<Msg> {
 		C!["columns"],
 		div![
 			C!["column is-8 ml-4 mt-5"],
-			attrs! {At::Id => "main"},
 			view_messages(&model.messages),
-			model.selection.view().map_msg(Msg::Selection)
-	,		canvas![attrs! {At::Id => "canvas", At::Width => "800", At::Height => "1000"}],
+			model.scheduler.view(),
 		],
-		div![C!["column"], model.config.view().map_msg(Msg::Config)],
+		div![
+			C!["column p-6"],
+			style! {St::BoxShadow => "-10px 0px 10px 1px #eeeeee"},
+			style! {St::OverflowY => "auto", St::Height => "100vh"},
+			model.init.view(model.started).map_msg(Msg::InitConfig),
+			hr![],
+			model.config.view().map_msg(Msg::Config),
+			hr![],
+			model.simulation.view().map_msg(Msg::SimulationConfig),
+			div![C!["pb-4"]],
+
+			div![
+				C!["buttons"],
+				model.start.view(false, model.started),
+				model.reset.view(false, !model.started),
+				model.pause.view(!model.started, model.paused),
+				model.resume.view(!model.started, !model.paused),
+			],
+			div![C!["pb-2"]],
+		],
+
 	]
 }
 
