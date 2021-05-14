@@ -1,9 +1,9 @@
 use seed::{prelude::*, *};
 
-use crate::api::{Config, InitConfig, Suggestion, Suggestions, Environment};
+use crate::api::{Config, InitConfig, Suggestion, Suggestions, Environment, make_suggestions};
 use crate::components::Button;
 use crate::fields::slider::SliderField;
-use crate::fields::{Field, InputField, SelectField};
+use crate::fields::{Field, InputField, SelectField, CheckboxField};
 use seed::futures::StreamExt;
 
 #[derive(Clone, Debug)]
@@ -15,7 +15,7 @@ pub enum Msg {
     Rec(<InputField<f64> as Field>::Msg),
     SelectionSigma(<InputField<f64> as Field>::Msg),
     Gamma(<InputField<f64> as Field>::Msg),
-    Diploid(<InputField<bool> as Field>::Msg),
+    Diploid(<CheckboxField as Field>::Msg),
     M(<InputField<f64> as Field>::Msg),
 }
 
@@ -27,23 +27,25 @@ pub struct ConfigForm {
     environment: SelectField,
     selection_sigma: InputField<f64>,
     gamma: InputField<f64>,
-    diploid: InputField<bool>,
+    diploid: CheckboxField,
     m: InputField<f64>,
 }
 
 impl ConfigForm {
     pub fn new() -> Self {
+        let kind_suggestions = make_suggestions(&["uniform", "normal", "equal"]);
+
         Self {
             mutation_mu: InputField::new("Mutation Mu", false).with_initial(Some(0.01)),
             mutation_sigma: InputField::new("Mutation Sigma", false).with_initial(Some(0.01)),
             mutation_step: InputField::new("Mutation Step", false).with_initial(Some(0.01))
                 .with_validator(|&value| (value <= 0.0).then(|| "Number must be strictly positive.".to_string())),
             rec: InputField::new("Recombinational probability", false).with_initial(Some(0.01)),
-            environment: SelectField::new("Environment", vec![], false),
+            environment: SelectField::new("Environment", kind_suggestions, false),
             selection_sigma: InputField::new("Selection Strength (Sigma)", false).with_initial(Some(0.01))
                 .with_validator(|&value| (value <= 0.0).then(|| "Number must be strictly positive.".to_string())),
             gamma: InputField::new("Generation Overlap (Gamma)", false).with_initial(Some(0.01)),
-            diploid: InputField::new("Diploid", false).with_initial(Some(false)),
+            diploid: CheckboxField::new("Diploid", false),
             m: InputField::new("Dispersal parameter (M)", false).with_initial(Some(0.01)),
         }
     }

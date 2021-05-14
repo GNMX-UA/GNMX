@@ -1,10 +1,11 @@
 use seed::{futures::StreamExt, prelude::*, *};
 
-use crate::{
-	api::{Config, Environment, InitConfig, Suggestion, Suggestions},
-	components::Button,
-	fields::{slider::SliderField, Field, InputField, SelectField},
-};
+use crate::api::{Config, Environment, InitConfig, Suggestion, Suggestions, make_suggestions};
+use crate::components::Button;
+use crate::fields::slider::SliderField;
+use crate::fields::{Field, InputField, SelectField, CheckboxField};
+use seed::futures::StreamExt;
+use crate::forms::make_suggestions;
 
 #[derive(Clone, Debug)]
 pub enum Msg {
@@ -15,33 +16,35 @@ pub enum Msg {
 	Rec(<SliderField as Field>::Msg),
 	SelectionSigma(<SliderField as Field>::Msg),
 	Gamma(<SliderField as Field>::Msg),
-	Diploid(<InputField<bool> as Field>::Msg),
+	Diploid(<CheckboxField as Field>::Msg),
 	M(<SliderField as Field>::Msg),
 }
 
 pub struct ConfigForm {
-	mutation_mu:     SliderField,
-	mutation_sigma:  SliderField,
-	mutation_step:   SliderField,
-	rec:             SliderField,
-	environment:     SelectField,
+	mutation_mu: SliderField,
+	mutation_sigma: SliderField,
+	mutation_step: SliderField,
+	rec: SliderField,
+	environment: SelectField,
 	selection_sigma: SliderField,
-	gamma:           SliderField,
-	diploid:         InputField<bool>,
-	m:               SliderField,
+	gamma: SliderField,
+	diploid: CheckboxField,
+	m: SliderField,
 }
 
 impl ConfigForm {
 	pub fn new() -> Self {
+		let kind_suggestions = make_suggestions(&["uniform", "normal", "equal"]);
+
 		Self {
 			mutation_mu:     SliderField::new("Mutation probability", 0.0 .. 1., 0.01),
 			mutation_sigma:  SliderField::new("Mutational effect", 0.0 .. 1., 0.01),
 			mutation_step:   SliderField::new("Mutational step size", 0.01 .. 1., 0.01),
 			rec:             SliderField::new("Recombination probability", 0.0 .. 1., 0.01),
-			environment:     SelectField::new("Environment function", vec![], false),
+			environment:     SelectField::new("Environment function", kind_suggestions, false),
 			selection_sigma: SliderField::new("Selection strength", 0.01 .. 1., 0.01),
 			gamma:           SliderField::new("Generation Overlap", 0.0 .. 1., 0.01),
-			diploid:         InputField::new("Diploid", false).with_initial(Some(false)),
+			diploid:         CheckboxField::new("Diploid", false),
 			m:               SliderField::new("Dispersal probability", 0.0 .. 1., 0.01),
 		}
 	}

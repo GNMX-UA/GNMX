@@ -38,7 +38,7 @@ pub fn draw(
 
 	let iter = history
 		.iter()
-		.map(|(tick, data)| data.phenotype_sample.iter().map(move |(i, s)| (tick, i, s)))
+		.map(|(tick, data)| data.iter().map(move |(i, s)| (tick, i, s)))
 		.flatten()
 		.map(|(t, i, s)| Circle::new((*t, *s), 2, COLORS[i % COLORS.len()].filled()))
 		.step_by(step);

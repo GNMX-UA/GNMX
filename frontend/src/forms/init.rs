@@ -16,24 +16,11 @@ pub enum Msg {
 }
 
 pub struct InitConfigForm {
-	t_max:       InputField<u64>,
-	kind:        SelectField,
+	t_max: InputField<u64>,
+	kind: SelectField,
 	individuals: InputField<u64>,
-	patches:     InputField<u64>,
-	loci:        InputField<u64>,
-}
-
-fn make_suggestions(names: &[&str]) -> Suggestions {
-	names
-		.iter()
-		.enumerate()
-		.map(
-			(|(i, s)| Suggestion {
-				name:  s.to_string(),
-				value: i as i64,
-			}),
-		)
-		.collect()
+	patches: InputField<u64>,
+	loci: InputField<u64>,
 }
 
 impl InitConfigForm {
