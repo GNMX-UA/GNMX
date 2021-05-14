@@ -1,10 +1,10 @@
-use seed::{prelude::*, *};
+use seed::{futures::StreamExt, prelude::*, *};
 
-use crate::api::{Config, InitConfig, InitialPopulation, Suggestion, Suggestions};
-use crate::components::Button;
-use crate::fields::slider::SliderField;
-use crate::fields::{Field, InputField, SelectField};
-use seed::futures::StreamExt;
+use crate::{
+	api::{Config, InitConfig, InitialPopulation, Suggestion, Suggestions},
+	components::Button,
+	fields::{slider::SliderField, Field, InputField, SelectField},
+};
 
 #[derive(Clone, Debug)]
 pub enum Msg {
@@ -16,11 +16,11 @@ pub enum Msg {
 }
 
 pub struct InitConfigForm {
-	t_max: InputField<u64>,
-	kind: SelectField,
+	t_max:       InputField<u64>,
+	kind:        SelectField,
 	individuals: InputField<u64>,
-	patches: InputField<u64>,
-	loci: InputField<u64>,
+	patches:     InputField<u64>,
+	loci:        InputField<u64>,
 }
 
 fn make_suggestions(names: &[&str]) -> Suggestions {
@@ -29,7 +29,7 @@ fn make_suggestions(names: &[&str]) -> Suggestions {
 		.enumerate()
 		.map(
 			(|(i, s)| Suggestion {
-				name: s.to_string(),
+				name:  s.to_string(),
 				value: i as i64,
 			}),
 		)
@@ -41,13 +41,16 @@ impl InitConfigForm {
 		let kind_suggestions = make_suggestions(&["uniform", "normal", "equal"]);
 
 		Self {
-			t_max: InputField::new("Ticks", false)
-				.with_placeholder("leave empty to run indefinitely")
-				.with_initial(Some(100_000)),
-			kind: SelectField::new("Kind", kind_suggestions, false),
+			t_max:       InputField::new("Ticks", false)
+				.with_placeholder("leave empty to run indefinitely"),
+			kind:        SelectField::new(
+				"Initial population distribution",
+				kind_suggestions,
+				false,
+			),
 			individuals: InputField::new("Population size", false).with_initial(Some(6_000)),
-			patches: InputField::new("Patch amount", false).with_initial(Some(5)),
-			loci: InputField::new("Loci amount", false).with_initial(Some(2)),
+			patches:     InputField::new("Patch amount", false).with_initial(Some(5)),
+			loci:        InputField::new("Locus amount", false).with_initial(Some(2)),
 		}
 	}
 

@@ -1,10 +1,10 @@
-use seed::{prelude::*, *};
+use seed::{futures::StreamExt, prelude::*, *};
 
-use crate::api::{Config, Environment, InitConfig, Suggestion, Suggestions};
-use crate::components::Button;
-use crate::fields::slider::SliderField;
-use crate::fields::{Field, InputField, SelectField};
-use seed::futures::StreamExt;
+use crate::{
+	api::{Config, Environment, InitConfig, Suggestion, Suggestions},
+	components::Button,
+	fields::{slider::SliderField, Field, InputField, SelectField},
+};
 
 #[derive(Clone, Debug)]
 pub enum Msg {
@@ -20,29 +20,29 @@ pub enum Msg {
 }
 
 pub struct ConfigForm {
-	mutation_mu: SliderField,
-	mutation_sigma: SliderField,
-	mutation_step: SliderField,
-	rec: SliderField,
-	environment: SelectField,
+	mutation_mu:     SliderField,
+	mutation_sigma:  SliderField,
+	mutation_step:   SliderField,
+	rec:             SliderField,
+	environment:     SelectField,
 	selection_sigma: SliderField,
-	gamma: SliderField,
-	diploid: InputField<bool>,
-	m: SliderField,
+	gamma:           SliderField,
+	diploid:         InputField<bool>,
+	m:               SliderField,
 }
 
 impl ConfigForm {
 	pub fn new() -> Self {
 		Self {
-			mutation_mu: SliderField::new("Mutation Mu", 0.0..1., 0.01),
-			mutation_sigma: SliderField::new("Mutation Sigma", 0.0..1., 0.01),
-			mutation_step: SliderField::new("Mutation Step", 0.01..1., 0.01),
-			rec: SliderField::new("Recombinational probability", 0.0..1., 0.01),
-			environment: SelectField::new("Environment", vec![], false),
-			selection_sigma: SliderField::new("Selection Strength (Sigma)", 0.01..1., 0.01),
-			gamma: SliderField::new("Generation Overlap (Gamma)", 0.0..1., 0.01),
-			diploid: InputField::new("Diploid", false).with_initial(Some(false)),
-			m: SliderField::new("Dispersal parameter (M)", 0.0..1., 0.01),
+			mutation_mu:     SliderField::new("Mutation probability", 0.0 .. 1., 0.01),
+			mutation_sigma:  SliderField::new("Mutational effect", 0.0 .. 1., 0.01),
+			mutation_step:   SliderField::new("Mutational step size", 0.01 .. 1., 0.01),
+			rec:             SliderField::new("Recombination probability", 0.0 .. 1., 0.01),
+			environment:     SelectField::new("Environment function", vec![], false),
+			selection_sigma: SliderField::new("Selection strength", 0.01 .. 1., 0.01),
+			gamma:           SliderField::new("Generation Overlap", 0.0 .. 1., 0.01),
+			diploid:         InputField::new("Diploid", false).with_initial(Some(false)),
+			m:               SliderField::new("Dispersal probability", 0.0 .. 1., 0.01),
 		}
 	}
 
@@ -108,18 +108,20 @@ impl ConfigForm {
 
 	pub fn view(&self) -> Node<Msg> {
 		div![
-			self.mutation_mu.view(false).map_msg(Msg::MutationMu),
-			self.mutation_sigma.view(false).map_msg(Msg::MutationSigma),
-			self.mutation_step.view(false).map_msg(Msg::MutationStep),
-			hr![],
 			self.environment.view(false).map_msg(Msg::Environment),
-			self.rec.view(false).map_msg(Msg::Rec),
+			hr![],
 			self.selection_sigma
 				.view(false)
 				.map_msg(Msg::SelectionSigma),
 			self.gamma.view(false).map_msg(Msg::Gamma),
-			self.diploid.view(false).map_msg(Msg::Diploid),
 			self.m.view(false).map_msg(Msg::M),
+			hr![],
+			self.diploid.view(false).map_msg(Msg::Diploid),
+			self.rec.view(false).map_msg(Msg::Rec),
+			hr![],
+			self.mutation_mu.view(false).map_msg(Msg::MutationMu),
+			self.mutation_sigma.view(false).map_msg(Msg::MutationSigma),
+			self.mutation_step.view(false).map_msg(Msg::MutationStep),
 		]
 	}
 }
