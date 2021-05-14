@@ -10,9 +10,9 @@ mod tests {
 		let p = vec![
 			Patch::new(vec![
 				Individual {
-					loci: tiny_vec![0.1, 0.1],
+					loci: tiny_vec![0.1, 0.1, 0.1, 0.1],
 				};
-				240 / 8
+				4000 / 8
 			]);
 			8
 		];
@@ -38,16 +38,8 @@ mod tests {
 			config.mutation_sigma,
 			config.mutation_step,
 		);
-		for i in 0 .. 10000 {
+		for i in 0 .. 100 {
 			step(&mut state, &config);
-			println!(
-				"{}",
-				state
-					.patches
-					.iter()
-					.map(|(x, y)| x.individuals.iter().map(|x| x.phenotype()).sum::<f64>())
-					.sum::<f64>() / 240.0
-			);
 		}
 	}
 

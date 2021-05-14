@@ -14,7 +14,7 @@ mod test;
 
 #[derive(Clone, Debug, Serialize, Deserialize, Default)]
 pub struct Individual {
-	loci: TinyVec<[f64; 10]>,
+	pub loci: TinyVec<[f64; 10]>,
 }
 
 impl Individual {
@@ -41,25 +41,216 @@ impl Patch {
 
 	pub fn extend(&mut self, other: Patch) { self.individuals.extend(other.individuals); }
 
-	pub fn random(size: usize, patch_size: usize, loci: usize) -> Vec<Patch> {
+	////////////////////////////////////////////////////////////////////////////////////////////////
+
+	pub fn normal(patches: usize, patch_size: usize, loci: usize) -> Vec<Patch> {
 		let mut rng = thread_rng();
-		let distr = Uniform::new(-1.0 / loci as f64, 1.0 / loci as f64);
-		(0 .. size)
+		let distr = Normal::new(0.0, 1.0 / loci as f64).unwrap();
+		let loci: TinyVec<[f64; 10]> = distr.sample_iter(&mut rng).take(loci).collect();
+		(0 .. patches)
 			.map(|_| Patch {
 				individuals: (0 .. patch_size)
-					.map(|_| Individual {
-						loci: distr.sample_iter(&mut rng).take(2 * loci).collect(),
+					.map(|_| Individual { loci: loci.clone() })
+					.collect(),
+			})
+			.collect()
+	}
+
+	pub fn normal_p(patches: usize, patch_size: usize, loci: usize) -> Vec<Patch> {
+		let mut rng = thread_rng();
+		let distr = Normal::new(0.0, 1.0).unwrap();
+		(0 .. patches)
+			.map(|_| {
+				let loci: TinyVec<[f64; 10]> = distr.sample_iter(&mut rng).take(loci).collect();
+				Patch {
+					individuals: (0 .. patch_size)
+						.map(|_| Individual { loci: loci.clone() })
+						.collect(),
+				}
+			})
+			.collect()
+	}
+
+	pub fn normal_i(patches: usize, patch_size: usize, loci: usize) -> Vec<Patch> {
+		let mut rng = thread_rng();
+		let distr = Normal::new(0.0, 1.0).unwrap();
+		(0 .. patches)
+			.map(|_| Patch {
+				individuals: (0 .. patch_size)
+					.map(|_| {
+						let loci = distr.sample_iter(&mut rng).take(loci).collect();
+						Individual { loci }
 					})
 					.collect(),
 			})
 			.collect()
 	}
 
-	pub fn random_env(size: usize) -> Vec<f64> {
+	pub fn uniform(patches: usize, patch_size: usize, loci: usize) -> Vec<Patch> {
+		let mut rng = thread_rng();
+		let distr = Uniform::new(-1.0 as f64, 1.0 as f64);
+		let loci: TinyVec<[f64; 10]> = distr.sample_iter(&mut rng).take(loci).collect();
+		(0 .. patches)
+			.map(|_| Patch {
+				individuals: (0 .. patch_size)
+					.map(|_| Individual { loci: loci.clone() })
+					.collect(),
+			})
+			.collect()
+	}
+
+	pub fn uniform_p(patches: usize, patch_size: usize, loci: usize) -> Vec<Patch> {
+		let mut rng = thread_rng();
+		let distr = Uniform::new(-1.0 as f64, 1.0 as f64);
+		(0 .. patches)
+			.map(|_| {
+				let loci: TinyVec<[f64; 10]> = distr.sample_iter(&mut rng).take(loci).collect();
+				Patch {
+					individuals: (0 .. patch_size)
+						.map(|_| Individual { loci: loci.clone() })
+						.collect(),
+				}
+			})
+			.collect()
+	}
+
+	pub fn uniform_i(patches: usize, patch_size: usize, loci: usize) -> Vec<Patch> {
+		let mut rng = thread_rng();
+		let distr = Uniform::new(-1.0 as f64, 1.0 as f64);
+		(0 .. patches)
+			.map(|_| Patch {
+				individuals: (0 .. patch_size)
+					.map(|_| {
+						let loci = distr.sample_iter(&mut rng).take(loci).collect();
+						Individual { loci }
+					})
+					.collect(),
+			})
+			.collect()
+	}
+
+	pub fn constant(patches: usize, patch_size: usize, loci_len: usize) -> Vec<Patch> {
+		let mut rng = thread_rng();
+		let distr = Uniform::new(-1.0 as f64, 1.0 as f64);
+		let value = distr.sample(&mut rng);
+		let mut loci = TinyVec::with_capacity(loci_len);
+		for _ in 0 .. loci_len {
+			loci.push(value);
+		}
+		(0 .. patches)
+			.map(|_| Patch {
+				individuals: (0 .. patch_size)
+					.map(|_| Individual { loci: loci.clone() })
+					.collect(),
+			})
+			.collect()
+	}
+
+	pub fn constant_p(patches: usize, patch_size: usize, loci_len: usize) -> Vec<Patch> {
+		let mut rng = thread_rng();
+		let distr = Uniform::new(-1.0 as f64, 1.0 as f64);
+		(0 .. patches)
+			.map(|_| {
+				let value = distr.sample(&mut rng);
+				let mut loci = TinyVec::with_capacity(loci_len);
+				for _ in 0 .. loci_len {
+					loci.push(value);
+				}
+				Patch {
+					individuals: (0 .. patch_size)
+						.map(|_| Individual { loci: loci.clone() })
+						.collect(),
+				}
+			})
+			.collect()
+	}
+
+	pub fn constant_i(patches: usize, patch_size: usize, loci_len: usize) -> Vec<Patch> {
+		let mut rng = thread_rng();
+		let distr = Uniform::new(-1.0 as f64, 1.0 as f64);
+		(0 .. patches)
+			.map(|_| Patch {
+				individuals: (0 .. patch_size)
+					.map(|_| {
+						let value = distr.sample(&mut rng);
+						let mut loci = TinyVec::with_capacity(loci_len);
+						for i in 0 .. loci_len {
+							loci.push(value);
+						}
+						Individual { loci }
+					})
+					.collect(),
+			})
+			.collect()
+	}
+
+	pub fn alternating(patches: usize, patch_size: usize, loci: usize, chance: f64) -> Vec<Patch> {
+		let mut rng = thread_rng();
+		let distr = Bernoulli::new(chance).unwrap();
+		(0 .. patches)
+			.map(|_| Patch {
+				individuals: (0 .. patch_size)
+					.map(|_| {
+						let loci = distr
+							.sample_iter(&mut rng)
+							.take(loci)
+							.map(|x| if x { 1.0 } else { -1.0 })
+							.collect();
+						Individual { loci }
+					})
+					.collect(),
+			})
+			.collect()
+	}
+
+	////////////////////////////////////////////////////////////////////////////////////////////////
+
+	pub fn random_env(len: usize) -> Vec<f64> {
 		let mut rng = thread_rng();
 		let distr = Uniform::new(-1.0, 1.0);
-		distr.sample_iter(&mut rng).take(size).collect()
+		distr.sample_iter(&mut rng).take(len).collect()
 	}
+
+	pub fn alternating_env(len: usize, chance: f64) -> Vec<f64> {
+		let mut rng = thread_rng();
+		let distr = Bernoulli::new(chance).unwrap();
+		distr
+			.sample_iter(&mut rng)
+			.take(len)
+			.map(|x| if x { 1.0 } else { -1.0 })
+			.collect()
+	}
+
+	pub fn sine_env(len: usize, tick: u64) -> Vec<f64> {
+		(0 .. len)
+			.map(|x| (2.0 * (x as f64 * PI / len as f64 + tick as f64 * PI) / 10000.0).sin())
+			.collect()
+	}
+
+	pub fn random_walk_env(p: Vec<f64>) -> Vec<f64> {
+		let mut rng = thread_rng();
+		let distr = Normal::new(0.0, 0.05).unwrap();
+		p.into_iter()
+			.map(|x| (x + distr.sample(&mut rng)).clamp(-1.0, 1.0))
+			.collect()
+	}
+
+	pub fn constant_with_jumps_env(p: Vec<f64>) -> Vec<f64> {
+		let mut rng = thread_rng();
+		let distr = Bernoulli::new(0.00001).unwrap();
+		let random = Uniform::new(-1.0, 1.0);
+		p.into_iter()
+			.map(|x| {
+				if distr.sample(&mut rng) {
+					random.sample(&mut rng)
+				} else {
+					x
+				}
+			})
+			.collect()
+	}
+
+	////////////////////////////////////////////////////////////////////////////////////////////////
 }
 
 impl Deref for Patch {
@@ -73,8 +264,19 @@ impl DerefMut for Patch {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub enum TempEnum {
-	Default,
+pub enum InitialPopulation {
+	// I: per individual, P: per patch, None: per population
+	UniformI,
+	UniformP,
+	Uniform,
+	ConstantI,
+	ConstantP,
+	Constant,
+	NormalI,
+	NormalP,
+	Normal,
+	AlternatingHalf,
+	AlternatingThird,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -82,7 +284,7 @@ pub struct InitConfig {
 	// max ticks, unlimited if None (=100000)
 	pub t_max: Option<u64>,
 
-	pub kind:        TempEnum,
+	pub kind:        InitialPopulation,
 	pub patches:     usize,
 	pub individuals: usize,
 	pub loci:        usize,
@@ -90,7 +292,13 @@ pub struct InitConfig {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum Environment {
-	Default,
+	Random,
+	AlternatingHalf,
+	AlternatingThird,
+	Sine,
+	RandomWalk,
+	Constant,
+	ConstantWithJumps,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -103,8 +311,6 @@ pub struct Config {
 	pub mutation_step:   f64,
 	// recombinational probality (=0.01)
 	pub rec:             f64,
-	// maximum amount of offspring (=1000)
-	pub r_max:           f64,
 	// selection strength (standard deviation)
 	pub selection_sigma: f64,
 	// generation overlap
@@ -113,8 +319,8 @@ pub struct Config {
 	pub diploid:         bool,
 	// dispersal parameter
 	pub m:               f64,
-	/* environment update function
-	 * pub environment:     Environment, */
+	// environment update function
+	pub environment:     Environment,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -126,26 +332,38 @@ pub struct State {
 impl State {
 	// update the environment
 	pub fn environment(&mut self, environment: &Environment, tick: u64) {
-		match environment {
-			Environment::Default => {},
+		let len = self.patches.len();
+		let new = match environment {
+			Environment::Random => Patch::random_env(len),
+			Environment::AlternatingHalf => Patch::alternating_env(len, 0.5),
+			Environment::AlternatingThird => Patch::alternating_env(len, 2.0 / 3.0),
+			Environment::Sine => Patch::sine_env(len, tick),
+			Environment::RandomWalk =>
+				Patch::random_walk_env(self.patches.iter().map(|(_, x)| *x).collect()),
+			Environment::Constant => return,
+			Environment::ConstantWithJumps =>
+				Patch::constant_with_jumps_env(self.patches.iter().map(|(_, x)| *x).collect()),
+		};
+		for ((_, env), new) in self.patches.iter_mut().zip(new) {
+			*env = new;
 		}
 	}
 
 	/// calculate amount of offspring per individual per patch
-	pub fn reproduction(&self, r_max: f64, selection_sigma: f64) -> Vec<Vec<f64>> {
+	pub fn reproduction(&self, selection_sigma: f64) -> Vec<Vec<f64>> {
 		let mut reproductive_success = Vec::with_capacity(self.patches.len());
 		for (patch, env) in &self.patches {
 			let mut patch_success = Vec::with_capacity(patch.len());
 			for individual in &**patch {
 				// r(y, theta) = r_max*e^(-(theta - y)^2/(2*sigma^2)
 
-				let offspring = ((r_max / (selection_sigma * (2.0 * PI).sqrt())).ln()
-					- ((env - individual.phenotype()).powi(2) / (2.0 * selection_sigma.powi(2))))
-				.exp();
-
-				// let offspring = (r_max.ln()
+				// let offspring = ((1000.0 / (selection_sigma * (2.0 * PI).sqrt())).ln()
 				// 	- ((env - individual.phenotype()).powi(2) / (2.0 * selection_sigma.powi(2))))
 				// .exp();
+
+				let offspring = (-((env - individual.phenotype()).powi(2)
+					/ (2.0 * selection_sigma.powi(2))))
+				.exp();
 				patch_success.push(offspring);
 			}
 			reproductive_success.push(patch_success);
@@ -171,7 +389,9 @@ impl State {
 		&self,
 		reproductive_success: Vec<Vec<f64>>,
 		death: &Vec<usize>,
+		diploid: bool,
 	) -> Vec<Patch> {
+		let times = if diploid { 2 } else { 1 };
 		let mut new_generation = Vec::with_capacity(self.patches.len());
 		for ((patch, _), patch_success, patch_death) in
 			izip!(&self.patches, reproductive_success, death)
@@ -184,7 +404,7 @@ impl State {
 			new_generation.push(Patch::new(
 				distr
 					.sample_iter(thread_rng())
-					.take(2 * patch_death)
+					.take(times * patch_death)
 					.map(|index| patch[index].clone())
 					.collect(),
 			));
@@ -227,20 +447,6 @@ impl State {
 					loci: Default::default(),
 				},
 			)
-		}
-		new_generation
-	}
-
-	/// half the new generation in every patch
-	pub fn haploid_generation(mut new_generation: Vec<Patch>) -> Vec<Patch> {
-		for patch in &mut new_generation {
-			let len = patch.len() / 2;
-			patch.resize(
-				len,
-				Individual {
-					loci: Default::default(),
-				},
-			);
 		}
 		new_generation
 	}
@@ -308,14 +514,40 @@ impl State {
 	}
 }
 
-pub fn init(init_config: InitConfig) -> Result<State, &'static str> {
+pub fn init(init_config: InitConfig, env: Environment) -> Result<State, &'static str> {
 	let patches = init_config.patches;
 	let individuals = init_config.individuals;
 	let loci = init_config.loci;
 
 	let patch_size = individuals / patches;
-	let p = Patch::random(patches, patch_size, loci).into_iter();
-	let e = Patch::random_env(patches).into_iter();
+	let p = match init_config.kind {
+		InitialPopulation::UniformI => Patch::uniform_i(patches, patch_size, loci),
+		InitialPopulation::UniformP => Patch::uniform_p(patches, patch_size, loci),
+		InitialPopulation::Uniform => Patch::uniform(patches, patch_size, loci),
+		InitialPopulation::ConstantI => Patch::constant_i(patches, patch_size, loci),
+		InitialPopulation::ConstantP => Patch::constant_p(patches, patch_size, loci),
+		InitialPopulation::Constant => Patch::constant(patches, patch_size, loci),
+		InitialPopulation::NormalI => Patch::normal_i(patches, patch_size, loci),
+		InitialPopulation::NormalP => Patch::normal_p(patches, patch_size, loci),
+		InitialPopulation::Normal => Patch::normal(patches, patch_size, loci),
+		InitialPopulation::AlternatingHalf => Patch::alternating(patches, patch_size, loci, 0.5),
+		InitialPopulation::AlternatingThird =>
+			Patch::alternating(patches, patch_size, loci, 2.0 / 3.0),
+	}
+	.into_iter();
+
+	let e = match env {
+		Environment::Random => Patch::random_env(patches),
+		Environment::AlternatingHalf => Patch::alternating_env(patches, 0.5),
+		Environment::AlternatingThird => Patch::alternating_env(patches, 2.0 * 3.0),
+		Environment::Sine => Patch::sine_env(patches, 0),
+		Environment::RandomWalk => Patch::random_walk_env(vec![0.0; patches]),
+		Environment::Constant | Environment::ConstantWithJumps => Uniform::new(-1.0, 1.0)
+			.sample_iter(&mut thread_rng())
+			.take(patches)
+			.collect(),
+	}
+	.into_iter();
 
 	let state = State {
 		tick:    0,
@@ -326,14 +558,12 @@ pub fn init(init_config: InitConfig) -> Result<State, &'static str> {
 }
 
 pub fn step(state: &mut State, config: &Config) {
-	// state.environment(&config.environment, state.tick);
-	let reproductive_success = state.reproduction(config.r_max, config.selection_sigma);
+	state.environment(&config.environment, state.tick);
+	let reproductive_success = state.reproduction(config.selection_sigma);
 	let death = state.adult_death(config.gamma);
-	let mut new_generation = state.density_regulation(reproductive_success, &death);
+	let mut new_generation = state.density_regulation(reproductive_success, &death, config.diploid);
 	if config.diploid {
 		new_generation = State::recombination(new_generation, config.rec);
-	} else {
-		new_generation = State::haploid_generation(new_generation);
 	}
 	new_generation = State::dispersal(new_generation, config.m);
 	new_generation = State::mutation(
