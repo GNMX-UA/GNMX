@@ -7,7 +7,6 @@ pub mod field;
 pub mod input;
 pub mod autocomplete;
 pub mod select;
-pub mod checkbox;
 pub mod slider;
 pub mod toggle;
 

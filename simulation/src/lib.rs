@@ -2,7 +2,6 @@ use core::ptr;
 use std::{
 	f64::consts::PI,
 	ops::{Deref, DerefMut},
-	thread::sleep_ms,
 };
 
 use itertools::izip;
@@ -34,7 +33,7 @@ impl DerefMut for Individual {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Patch {
-	individuals: Vec<Individual>,
+	pub individuals: Vec<Individual>,
 }
 
 impl Patch {

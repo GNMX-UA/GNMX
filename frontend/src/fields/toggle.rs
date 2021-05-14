@@ -12,16 +12,16 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 #[derive(Default)]
 pub struct ToggleField {
-    label: &'static str,
+    label: String,
 
     initial: bool,
     value: bool,
 }
 
 impl ToggleField {
-    pub fn new(label: &'static str, initial: bool) -> Self {
+    pub fn new(label: impl Into<String>, initial: bool) -> Self {
         Self {
-            label,
+            label: label.into(),
             value: initial,
             ..Default::default()
         }

@@ -7,31 +7,15 @@ mod graphs;
 use seed::{prelude::*, *};
 
 use crate::api::{Config, InitConfig};
+use crate::forms::selection::SelectionForm;
 use crate::forms::{Action, ConfigForm};
-use crate::graphs::{line, scatter};
-use ord_subset::OrdSubsetIterExt;
+use crate::graphs::scheduler::{DrawScheduler, GraphData};
+
+use plotters_canvas::CanvasBackend;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::future::Future;
 use std::ops::Range;
-use std::time::Duration;
-use wasm_timer::Instant;
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct GraphData {
-	population: u64,
-	phenotype_variance: f64,
-	phenotype_distance: f64,
-	phenotype_sample: Vec<(usize, f64)>, // (patch_index, phenotype)
-}
-
-#[derive(Clone, Debug, Default)]
-pub struct GraphRanges {
-	population: Range<f64>,
-	phenotype_variance: Range<f64>,
-	phenotype_distance: Range<f64>,
-	phenotype_sample: Range<f64>,
-}
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum Query {
@@ -54,19 +38,18 @@ pub enum Response {
 #[derive(Debug)]
 pub enum Msg {
 	Config(crate::forms::config::Msg),
+	Selection(crate::forms::selection::Msg),
 	Delete(usize),
-	Draw(u64),
 	Resize,
 	Ws(WebSocketMessage),
 }
 
 struct Model {
 	config: ConfigForm,
-	ws: WebSocket,
+	selection: SelectionForm,
 
-	history: Vec<(u64, GraphData)>,
-	drawing: bool,
-	ranges: GraphRanges,
+	ws: WebSocket,
+	scheduler: DrawScheduler,
 
 	messages: HashMap<usize, (bool, String)>,
 	current_id: usize,
@@ -76,121 +59,57 @@ fn init(_: Url, orders: &mut impl Orders<Msg>) -> Model {
 	orders.stream(streams::window_event(Ev::Resize, |_| Msg::Resize));
 	Model {
 		config: ConfigForm::new(),
-		history: vec![],
-		drawing: false,
-		ranges: Default::default(),
+		selection: SelectionForm::new(),
+
 		ws: WebSocket::builder("ws://127.0.0.1:3030/ws", orders)
 			.on_message(Msg::Ws)
 			.build_and_open()
 			.expect("websocket could not connect"),
+		scheduler: DrawScheduler::new("canvas"),
+
 		messages: HashMap::new(),
 		current_id: 1,
 	}
 }
 
-fn handle_action(action: Action, ws: &mut WebSocket) {
+fn handle_action(model: &mut Model, action: Action) {
 	match action {
-		Action::Start(_, config) => log!(ws.send_json(&Query::Start(config))),
-		Action::Update(config) => log!(ws.send_json(&Query::Update(config))),
-		Action::Stop => log!(ws.send_json(&Query::Stop)),
-		Action::Pause => log!(ws.send_json(&Query::Pause)),
-		Action::Resume => log!(ws.send_json(&Query::Resume)),
+		Action::Start(_, config) => {
+			model.selection.set_loci(5);
+			model.scheduler.update_selection(model.selection.extract());
+			log!(model.ws.send_json(&Query::Start(config)))
+		}
+		Action::Update(config) => log!(model.ws.send_json(&Query::Update(config))),
+		Action::Stop => {
+			model.selection.set_loci(0);
+			log!(model.ws.send_json(&Query::Stop))
+		}
+		Action::Pause => log!(model.ws.send_json(&Query::Pause)),
+		Action::Resume => log!(model.ws.send_json(&Query::Resume)),
 		Action::None => {}
 	}
 }
 
-fn min_assign(a: &mut f64, b: f64) {
-	*a = a.min(b);
-}
-
-fn max_assign(a: &mut f64, b: f64) {
-	*a = a.max(b);
-}
-
-fn update_ranges(data: &GraphData, ranges: &mut GraphRanges) {
-	min_assign(&mut ranges.population.start, data.population as f64);
-	max_assign(&mut ranges.population.end, data.population as f64);
-
-	min_assign(&mut ranges.phenotype_variance.start, data.phenotype_variance);
-	max_assign(&mut ranges.phenotype_variance.end, data.phenotype_variance);
-
-	min_assign(&mut ranges.phenotype_distance.start, data.phenotype_distance);
-	max_assign(&mut ranges.phenotype_distance.end, data.phenotype_distance);
-
-	let sample_min = data.phenotype_sample
-		.iter()
-		.map(|x| x.1)
-		.ord_subset_min()
-		.unwrap();
-
-	let sample_max = data.phenotype_sample
-		.iter()
-		.map(|x| x.1)
-		.ord_subset_max()
-		.unwrap();
-
-	min_assign(&mut ranges.phenotype_sample.start, sample_min);
-	max_assign(&mut ranges.phenotype_sample.end, sample_max);
-}
-
-fn draw_graphs(model: &mut Model) -> Duration {
-	let start = Instant::now();
-
-	line::draw(
-		"canvas_pop",
-		&model.history,
-		|data| data.population as f64,
-		model.ranges.population.clone(),
-		"population size",
-	)
-	.expect("could not draw");
-
-	scatter::draw(
-		"canvas_pheno",
-		&model.history,
-		model.ranges.phenotype_sample.clone(),
-		"phenotypes per patch",
-	)
-	.expect("could not draw");
-
-	line::draw(
-		"canvas_var",
-		&model.history,
-		|data| data.phenotype_variance,
-		model.ranges.phenotype_variance.clone(),
-		"phenotypes variation",
-	)
-	.expect("could not draw");
-
-	let mapper = |data: &GraphData| data.phenotype_distance;
-	line::draw(
-		"canvas_dist",
-		&model.history,
-		mapper,
-		model.ranges.phenotype_distance.clone(),
-		"phenotypes distance",
-	)
-	.expect("could not draw");
-
-	start.elapsed()
-}
-
 fn update(msg: Msg, model: &mut Model, orders: &mut impl Orders<Msg>) {
 	match msg {
-		Msg::Config(msg) => handle_action(
-			model.config.update(msg, &mut orders.proxy(Msg::Config)),
-			&mut model.ws,
-		),
+		Msg::Config(msg) => {
+			let action = model.config.update(msg, &mut orders.proxy(Msg::Config));
+			handle_action(model, action)
+		}
+		Msg::Selection(msg) => {
+				let selection = model.selection.update(msg, &mut orders.proxy(Msg::Selection));
+				model.scheduler.update_selection(selection);
+		}
 		Msg::Delete(id) => {
 			model.messages.remove(&id);
 		}
 		Msg::Ws(message) => match message.json::<Response>() {
 			Ok(Response::State(tick, data)) => {
-				update_ranges(&data, &mut model.ranges);
-				model.history.push((tick, data));
-
-				if !model.drawing {
-					orders.send_msg(Msg::Draw(tick));
+				if let Some(error) = model.scheduler.update_data(tick, data) {
+					model
+						.messages
+						.insert(model.current_id, (true, error.to_string()));
+					model.current_id += 1;
 				}
 			}
 			Ok(Response::Started) => log!("simulation started"),
@@ -204,49 +123,18 @@ fn update(msg: Msg, model: &mut Model, orders: &mut impl Orders<Msg>) {
 			}
 			Ok(Response::Stopped) => {
 				model.config.stop();
-				model.history.clear();
-				model.drawing = false;
+				model.scheduler.stop();
 			}
 			Err(err) => log!(err),
 		},
 		Msg::Resize => {
-			// TODO: maybe make resize optional if problem found
-			let document = window().document().expect("window has no document");
-			let width = document
-				.get_element_by_id("canvasses")
-				.expect("could not find element canvasses")
-				.dyn_into::<web_sys::HtmlDivElement>()
-				.expect("could not turn canvasses into div element")
-				.offset_width() as u32;
-
-			let resizer = |id: &str| {
-				document
-					.get_element_by_id(id)
-					.expect("could not find canvas element")
-					.dyn_into::<web_sys::HtmlCanvasElement>()
-					.expect("could not turn canvas into canvas element")
-					.set_width(width);
-			};
-
-			resizer("canvas_pop");
-			resizer("canvas_pheno");
-			resizer("canvas_var");
-			resizer("canvas_dist");
+			if let Some(error) = model.scheduler.update_size() {
+				model
+					.messages
+					.insert(model.current_id, (true, error.to_string()));
+				model.current_id += 1;
+			}
 		}
-		Msg::Draw(last) if model.history.len() > 0 => {
-			model.drawing = true;
-			let tick = model.history.last().unwrap().0;
-
-			// TODO: why the fuck does matching not work
-			let duration = match tick {
-				_ if last == tick => Duration::from_millis(100),
-				_ => draw_graphs(model)
-			};
-
-			let cmd = cmds::timeout(duration.as_millis() as u32, move || Msg::Draw(tick));
-			orders.perform_cmd(cmd);
-		}
-		Msg::Draw(_) => {}
 	}
 }
 
@@ -269,12 +157,10 @@ fn view(model: &Model) -> Node<Msg> {
 		C!["columns"],
 		div![
 			C!["column is-8 ml-4 mt-5"],
-			attrs! {At::Id => "canvasses"},
+			attrs! {At::Id => "main"},
 			view_messages(&model.messages),
-			canvas![attrs! {At::Id => "canvas_pop", At::Width => "800", At::Height => "300"}],
-			canvas![attrs! {At::Id => "canvas_pheno", At::Width => "800", At::Height => "300"}],
-			canvas![attrs! {At::Id => "canvas_var", At::Width => "800", At::Height => "300"}],
-			canvas![attrs! {At::Id => "canvas_dist", At::Width => "800", At::Height => "300"}]
+			model.selection.view().map_msg(Msg::Selection)
+	,		canvas![attrs! {At::Id => "canvas", At::Width => "800", At::Height => "1000"}],
 		],
 		div![C!["column"], model.config.view().map_msg(Msg::Config)],
 	]
