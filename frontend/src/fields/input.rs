@@ -22,7 +22,7 @@ where
     value: String,
 
     placeholder: &'static str,
-    validator: Option<Box<dyn Fn(&str) -> Option<String>>>,
+    validator: Option<Box<dyn Fn(&U) -> Option<String>>>,
 
     optional: bool,
     submitted: AtomicBool,
@@ -51,7 +51,7 @@ where
         self
     }
 
-    pub fn with_validator(mut self, validator: impl Fn(&str) -> Option<String> + 'static) -> Self {
+    pub fn with_validator(mut self, validator: impl Fn(&U) -> Option<String> + 'static) -> Self {
         self.validator = Some(Box::new(validator));
         self
     }
@@ -84,17 +84,20 @@ where
             Err(err) => State::Error(err.to_string()),
         };
 
-        self.state = match (&msg, &self.validator, &self.initial) {
-            (Msg::Value(str), _, _) if str.is_empty() => State::Empty,
-            (Msg::Value(str), _, Some(initial)) if str == &initial.to_string() => {
+        self.state = match (&msg, &self.initial) {
+            (Msg::Value(str), _) if str.is_empty() => State::Empty,
+            (Msg::Value(str), Some(initial)) if str == &initial.to_string() => {
                 State::Value(initial.clone())
             }
-            (Msg::Value(str), Some(validator), _) => match validator(&str) {
-                Some(err) => State::Error(err),
-                None => mapper(&str),
+            (Msg::Value(str), _) => match (U::from_str(str), &self.validator) {
+                (Ok(value), Some(validator)) => match validator(&value) {
+                    Some(error) => State::Error(error),
+                    None => State::Value(value)
+                },
+                (Ok(value), _) => State::Value(value),
+                (Err(err), _) => State::Error(err.to_string()),
             },
-            (Msg::Value(str), _, _) => mapper(&str),
-            (Msg::Blur, _, _) => return true,
+            (Msg::Blur, _) => return true,
         };
 
         if let Msg::Value(str) = msg {

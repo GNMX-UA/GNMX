@@ -21,7 +21,7 @@ use std::ops::Range;
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum Query {
 	Reset,
-	Start(Config),
+	Start(InitConfig, Config),
 	Pause,
 	Resume,
 	Update(Config),
@@ -128,9 +128,9 @@ fn update(msg: Msg, model: &mut Model, orders: &mut impl Orders<Msg>) {
 				.simulation
 				.update(msg, &mut orders.proxy(Msg::SimulationConfig));
 		}
-		Msg::Start => match model.config.extract() {
-			Some(config) => send_json(model, &Query::Start(config)),
-			None => handle_notification(
+		Msg::Start => match (model.init.extract(), model.config.extract()) {
+			(Some(init), Some(config)) => send_json(model, &Query::Start(init, config)),
+			_ => handle_notification(
 				model,
 				"Cannot start simulation as some parameters are wrong",
 				true,
@@ -208,6 +208,7 @@ fn view(model: &Model) -> Node<Msg> {
 			C!["column p-6"],
 			style! {St::BoxShadow => "-10px 0px 10px 1px #eeeeee"},
 			style! {St::OverflowY => "auto", St::Height => "100vh"},
+
 			model.init.view(model.started).map_msg(Msg::InitConfig),
 			hr![],
 			model.config.view().map_msg(Msg::Config),

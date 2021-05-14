@@ -1,6 +1,6 @@
 use seed::{prelude::*, *};
 
-use crate::api::{Config, InitConfig, Suggestion, Suggestions, TempEnum};
+use crate::api::{Config, InitConfig, Suggestion, Suggestions};
 use crate::components::Button;
 use crate::fields::slider::SliderField;
 use crate::fields::{Field, InputField, SelectField};

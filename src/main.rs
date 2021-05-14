@@ -9,12 +9,13 @@ use warp::ws::{Message, WebSocket};
 use warp::{Filter, Reply};
 
 use rand::seq::SliceRandom;
-use simulation::{init, Patch, step, Config, InitConfig, TempEnum};
+use simulation::{init, step, Config, InitConfig, Patch};
 
 static ERROR: &str = "Internal server error, an illegal message was received.";
 static DROPPED: &str = "The receiver on the simulation thread were dropped, most likely due to a crash. Please refresh the page or restart.";
 static NAN: &str = "Encountered NaN in loci or population size has become 0, stopping simulation.";
-static WS: &str = "Websocket was closed while the simulation thread was still running, stopping simulation.";
+static WS: &str =
+	"Websocket was closed while the simulation thread was still running, stopping simulation.";
 
 static SAMPLE_SIZE: usize = 100;
 static INTERVAL: u64 = 100;
@@ -26,10 +27,11 @@ pub struct GraphData {
 	pub phenotype_sample: Vec<(usize, f64)>, // (patch_index, phenotype)
 	pub environment: Vec<f64>,
 }
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum Query {
 	Reset,
-	Start(Config),
+	Start(InitConfig, Config),
 	Pause,
 	Resume,
 	Update(Config),
@@ -91,7 +93,7 @@ fn extract_graph_data(patches: &[(Patch, f64)]) -> Option<GraphData> {
 			.choose_multiple(&mut rand::thread_rng(), SAMPLE_SIZE)
 			.cloned()
 			.collect(),
-		environment: patches.iter().map(|x| x.1).collect()
+		environment: patches.iter().map(|x| x.1).collect(),
 	})
 }
 
@@ -123,7 +125,7 @@ fn simulate(
 	info!("new simulation thread started");
 
 	let ticks = initial.t_max.unwrap_or(u64::MAX);
-	let mut state = init(initial).unwrap();
+	let mut state = init(initial, config.environment.clone()).unwrap();
 
 	let mut paused = false;
 
@@ -132,13 +134,19 @@ fn simulate(
 
 	loop {
 		if state.tick > ticks {
-			blocking_respond(&sender, Response::Info("Simulation has ended successfully".to_string()));
+			blocking_respond(
+				&sender,
+				Response::Info("Simulation has ended successfully".to_string()),
+			);
 			return;
 		}
 
 		match receiver.try_recv() {
 			Err(std::sync::mpsc::TryRecvError::Disconnected) => {
-				blocking_respond(&sender, Response::Info("Simulation was successfully stopped".to_string()));
+				blocking_respond(
+					&sender,
+					Response::Info("Simulation was successfully stopped".to_string()),
+				);
 				return;
 			}
 			Ok(Notification::Update(new)) => config = new,
@@ -183,15 +191,7 @@ async fn receive(connection: WebSocket) {
 		if message.is_text() {
 			let msg = serde_json::from_slice(message.as_bytes()).unwrap();
 			match (msg, &mut notifier) {
-				(Query::Start(config), None) => {
-					let initial = InitConfig {
-						t_max: None,
-						kind: TempEnum::Default,
-						patches: 5,
-						individuals: 100,
-						loci: 5,
-					};
-
+				(Query::Start(initial, config), None) => {
 					let (notif_sender, notif_receiver) = std::sync::mpsc::channel();
 					notifier = Some(notif_sender);
 
@@ -205,12 +205,8 @@ async fn receive(connection: WebSocket) {
 				(Query::Update(config), Some(notifier)) => {
 					notify(notifier, Notification::Update(config))
 				}
-				(Query::Pause, Some(notifier)) => {
-					notify(notifier, Notification::Pause)
-				}
-				(Query::Resume, Some(notifier)) => {
-					notify(notifier, Notification::Resume)
-				}
+				(Query::Pause, Some(notifier)) => notify(notifier, Notification::Pause),
+				(Query::Resume, Some(notifier)) => notify(notifier, Notification::Resume),
 				_ => respond(&responder, Response::Error(ERROR.to_string())).await,
 			}
 		} else {

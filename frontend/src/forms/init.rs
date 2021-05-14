@@ -1,6 +1,6 @@
 use seed::{prelude::*, *};
 
-use crate::api::{Config, InitConfig, Suggestion, Suggestions, TempEnum};
+use crate::api::{Config, InitConfig, InitialPopulation, Suggestion, Suggestions};
 use crate::components::Button;
 use crate::fields::slider::SliderField;
 use crate::fields::{Field, InputField, SelectField};
@@ -8,118 +8,100 @@ use seed::futures::StreamExt;
 
 #[derive(Clone, Debug)]
 pub enum Msg {
-    TMax(<InputField<String> as Field>::Msg),
-    PopulationSize(<InputField<u64> as Field>::Msg),
-    PopulationType(<SelectField as Field>::Msg),
-    EnvironmentSize(<InputField<u64> as Field>::Msg),
-    EnvironmentType(<SelectField as Field>::Msg),
+	TMax(<InputField<String> as Field>::Msg),
+	Kind(<SelectField as Field>::Msg),
+	Individuals(<InputField<u64> as Field>::Msg),
+	Patches(<InputField<u64> as Field>::Msg),
+	Loci(<InputField<u64> as Field>::Msg),
 }
 
 pub struct InitConfigForm {
-    t_max: InputField<u64>,
-    population_size: InputField<u64>,
-    population_type: SelectField,
-    patch_amount: InputField<u64>,
-    patch_type: SelectField,
+	t_max: InputField<u64>,
+	kind: SelectField,
+	individuals: InputField<u64>,
+	patches: InputField<u64>,
+	loci: InputField<u64>,
 }
 
 fn make_suggestions(names: &[&str]) -> Suggestions {
-    names
-        .iter()
-        .enumerate()
-        .map(
-            (|(i, s)| Suggestion {
-                name: s.to_string(),
-                value: i as i64,
-            }),
-        )
-        .collect()
+	names
+		.iter()
+		.enumerate()
+		.map(
+			(|(i, s)| Suggestion {
+				name: s.to_string(),
+				value: i as i64,
+			}),
+		)
+		.collect()
 }
 
 impl InitConfigForm {
-    pub fn new() -> Self {
-        let pop_types = make_suggestions(&["uniform", "normal", "equal"]);
-        let env_type = make_suggestions(&["uniform", "normal", "equal"]);
+	pub fn new() -> Self {
+		let kind_suggestions = make_suggestions(&["uniform", "normal", "equal"]);
 
-        Self {
-            t_max: InputField::new("Ticks", false)
-                .with_placeholder("leave empty to run indefinitely")
-                .with_initial(Some(100_000)),
-            population_size: InputField::new("Population size", false).with_initial(Some(6_000)),
-            population_type: SelectField::new("Type", pop_types, false),
-            patch_amount: InputField::new("Patch amount", false).with_initial(Some(2)),
-            patch_type: SelectField::new("Type", env_type, false),
-        }
-    }
+		Self {
+			t_max: InputField::new("Ticks", false)
+				.with_placeholder("leave empty to run indefinitely")
+				.with_initial(Some(100_000)),
+			kind: SelectField::new("Kind", kind_suggestions, false),
+			individuals: InputField::new("Population size", false).with_initial(Some(6_000)),
+			patches: InputField::new("Patch amount", false).with_initial(Some(5)),
+			loci: InputField::new("Loci amount", false).with_initial(Some(2)),
+		}
+	}
 
-    pub fn update(&mut self, msg: Msg, orders: &mut impl Orders<Msg>) -> bool {
-        // so much copy pasta but oh well
-        match msg {
-            Msg::TMax(msg) => self.t_max.update(msg, &mut orders.proxy(Msg::TMax)),
-            Msg::PopulationSize(msg) => self
-                .population_size
-                .update(msg, &mut orders.proxy(Msg::PopulationSize)),
-            Msg::PopulationType(msg) => self
-                .population_type
-                .update(msg, &mut orders.proxy(Msg::PopulationType)),
-            Msg::EnvironmentSize(msg) => self
-                .patch_amount
-                .update(msg, &mut orders.proxy(Msg::EnvironmentSize)),
-            Msg::EnvironmentType(msg) => self
-                .patch_type
-                .update(msg, &mut orders.proxy(Msg::EnvironmentType)),
-        }
-    }
+	pub fn update(&mut self, msg: Msg, orders: &mut impl Orders<Msg>) -> bool {
+		// so much copy pasta but oh well
+		match msg {
+			Msg::TMax(msg) => self.t_max.update(msg, &mut orders.proxy(Msg::TMax)),
+			Msg::Kind(msg) => self.kind.update(msg, &mut orders.proxy(Msg::Kind)),
+			Msg::Individuals(msg) => self
+				.individuals
+				.update(msg, &mut orders.proxy(Msg::Individuals)),
+			Msg::Patches(msg) => self.patches.update(msg, &mut orders.proxy(Msg::Patches)),
+			Msg::Loci(msg) => self.loci.update(msg, &mut orders.proxy(Msg::Loci)),
+		}
+	}
 
-    fn extract(&self) -> Option<InitConfig> {
-        let t_max = self.t_max.value(true);
-        let population_size = self.population_size.value(true);
-        let population_type = self.population_type.value(true);
-        let patch_amount = self.patch_amount.value(true);
-        let patch_type = self.patch_type.value(true);
+	pub fn extract(&self) -> Option<InitConfig> {
+		let t_max = self.t_max.value(true);
+		let kind = self.kind.value(true);
+		let individuals = self.individuals.value(true);
+		let patches = self.patches.value(true);
+		let loci = self.loci.value(true);
 
-        // Some(InitConfig {
-        // 	t_max,
-        // 	population_size: population_size?,
-        // 	population_type: population_type?,
-        // 	patch_amount: patch_amount?,
-        // 	patch_type: patch_type?,
-        // })
+		let kind = match kind {
+			Some(0) => InitialPopulation::UniformI,
+			Some(1) => InitialPopulation::UniformP,
+			Some(2) => InitialPopulation::Uniform,
+			Some(3) => InitialPopulation::ConstantI,
+			Some(4) => InitialPopulation::ConstantP,
+			Some(5) => InitialPopulation::Constant,
+			Some(6) => InitialPopulation::NormalI,
+			Some(7) => InitialPopulation::NormalP,
+			Some(8) => InitialPopulation::Normal,
+			Some(9) => InitialPopulation::AlternatingHalf,
+			Some(10) => InitialPopulation::AlternatingThird,
+			Some(_) | None => return None,
+		};
 
-        Some(InitConfig {
-            t_max,
-            kind: TempEnum::Default,
-        })
-    }
+		Some(InitConfig {
+			t_max,
+			kind,
+			individuals: individuals? as usize,
+			patches: patches? as usize,
+			loci: loci? as usize,
+		})
+	}
 
-    pub fn view(&self, disabled: bool) -> Node<Msg> {
-        div![
-			div![
-				C!["columns"],
-				div![
-					C!["column"],
-					self.population_size
-						.view(disabled)
-						.map_msg(Msg::PopulationSize)
-				],
-				div![
-					C!["column is-narrow"],
-					self.population_type
-						.view(disabled)
-						.map_msg(Msg::PopulationType)
-				],
-			],
-			div![
-				C!["columns"],
-				div![
-					C!["column"],
-					self.patch_amount.view(disabled).map_msg(Msg::EnvironmentSize)
-				],
-				div![
-					C!["column is-narrow"],
-					self.patch_type.view(disabled).map_msg(Msg::EnvironmentType)
-				],
-			],
+	pub fn view(&self, disabled: bool) -> Node<Msg> {
+		div![
+			self.t_max.view(disabled).map_msg(Msg::TMax),
+			self.kind.view(disabled).map_msg(Msg::Kind),
+			self.individuals.view(disabled).map_msg(Msg::Individuals),
+			self.patches.view(disabled).map_msg(Msg::Patches),
+			self.loci.view(disabled).map_msg(Msg::Loci),
 		]
-    }
+	}
 }
