@@ -15,7 +15,6 @@ pub enum Msg {
     Rec(<InputField<f64> as Field>::Msg),
     SelectionSigma(<InputField<f64> as Field>::Msg),
     Gamma(<InputField<f64> as Field>::Msg),
-    Diploid(<InputField<bool> as Field>::Msg),
     M(<InputField<f64> as Field>::Msg),
 }
 
@@ -27,26 +26,32 @@ pub struct GamerConfigForm {
     environment: SelectField,
     selection_sigma: InputField<f64>,
     gamma: InputField<f64>,
-    diploid: InputField<bool>,
     m: InputField<f64>,
 }
 
 impl GamerConfigForm {
     pub fn new() -> Self {
-        let kind_suggestions = make_suggestions(&["uniform", "normal", "equal"]);
+        let kind_suggestions = make_suggestions(&[
+            "Random",
+            "Alternating with 50% chance",
+            "Alternating with 67% chance",
+            "Sinusoid with patch offset",
+            "Random walk",
+            "Constant",
+            "Constant with jumps"
+        ]);
 
         Self {
-            mutation_mu: InputField::new("Mutation Mu", false).with_initial(Some(0.01)),
-            mutation_sigma: InputField::new("Mutation Sigma", false).with_initial(Some(0.01)),
-            mutation_step: InputField::new("Mutation Step", false).with_initial(Some(0.01))
+            mutation_mu: InputField::new("Mutation probability", false).with_initial(Some(0.01)),
+            mutation_sigma: InputField::new("Mutational effect", false).with_initial(Some(0.01)),
+            mutation_step: InputField::new("Mutational step size", false).with_initial(Some(0.01))
                 .with_validator(|&value| (value <= 0.0).then(|| "Number must be strictly positive.".to_string())),
-            rec: InputField::new("Recombinational probability", false).with_initial(Some(0.01)),
-            environment: SelectField::new("Environment", kind_suggestions, false),
-            selection_sigma: InputField::new("Selection Strength (Sigma)", false).with_initial(Some(0.01))
+            rec: InputField::new("Recombination probability", false).with_initial(Some(0.01)),
+            environment: SelectField::new("Environment function", kind_suggestions, false),
+            selection_sigma: InputField::new("Selection strength", false).with_initial(Some(0.01))
                 .with_validator(|&value| (value <= 0.0).then(|| "Number must be strictly positive.".to_string())),
-            gamma: InputField::new("Generation Overlap (Gamma)", false).with_initial(Some(0.01)),
-            diploid: InputField::new("Diploid", false).with_initial(Some(false)),
-            m: InputField::new("Dispersal parameter (M)", false).with_initial(Some(0.01)),
+            gamma: InputField::new("Generation Overlap", false).with_initial(Some(0.01)),
+            m: InputField::new("Dispersal probability", false).with_initial(Some(0.01)),
         }
     }
 
@@ -71,7 +76,6 @@ impl GamerConfigForm {
                     .update(msg, &mut orders.proxy(Msg::SelectionSigma))
             }
             Msg::Gamma(msg) => self.gamma.update(msg, &mut orders.proxy(Msg::Gamma)),
-            Msg::Diploid(msg) => self.diploid.update(msg, &mut orders.proxy(Msg::Diploid)),
             Msg::M(msg) => self.m.update(msg, &mut orders.proxy(Msg::M)),
         }
     }
@@ -83,7 +87,6 @@ impl GamerConfigForm {
         let rec = self.rec.value(true);
         let selection_sigma = self.selection_sigma.value(true);
         let gamma = self.gamma.value(true);
-        let diploid = self.diploid.value(true);
         let m = self.m.value(true);
         let environment = self.environment.value(true);
 
@@ -105,7 +108,6 @@ impl GamerConfigForm {
             rec: rec?,
             selection_sigma: selection_sigma?,
             gamma: gamma?,
-            diploid: diploid?,
             m: m?,
             environment
         })
@@ -113,18 +115,19 @@ impl GamerConfigForm {
 
     pub fn view(&self) -> Node<Msg> {
         div![
-			self.mutation_mu.view(false).map_msg(Msg::MutationMu),
-			self.mutation_sigma.view(false).map_msg(Msg::MutationSigma),
-			self.mutation_step.view(false).map_msg(Msg::MutationStep),
-			hr![],
+            self.rec.view(false).map_msg(Msg::Rec),
+            hr![],
 			self.environment.view(false).map_msg(Msg::Environment),
-			self.rec.view(false).map_msg(Msg::Rec),
+			hr![],
 			self.selection_sigma
 				.view(false)
 				.map_msg(Msg::SelectionSigma),
 			self.gamma.view(false).map_msg(Msg::Gamma),
-			self.diploid.view(false).map_msg(Msg::Diploid),
 			self.m.view(false).map_msg(Msg::M),
+			hr![],
+			self.mutation_mu.view(false).map_msg(Msg::MutationMu),
+			self.mutation_sigma.view(false).map_msg(Msg::MutationSigma),
+			self.mutation_step.view(false).map_msg(Msg::MutationStep),
 		]
     }
 }

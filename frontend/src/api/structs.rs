@@ -25,6 +25,9 @@ pub struct InitConfig {
     pub patches:     usize,
     pub individuals: usize,
     pub loci:        usize,
+
+    // diploid or haploid
+    pub diploid:         bool,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -52,8 +55,6 @@ pub struct Config {
     pub selection_sigma: f64,
     // generation overlap
     pub gamma:           f64,
-    // diploid or haploid
-    pub diploid:         bool,
     // dispersal parameter
     pub m:               f64,
     // environment update function

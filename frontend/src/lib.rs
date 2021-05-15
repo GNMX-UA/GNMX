@@ -11,12 +11,13 @@ use crate::forms::{ConfigForm, InitConfigForm, SimulationForm};
 use crate::graphs::scheduler::{DrawScheduler, GraphData, Tab};
 
 use crate::components::Button;
+use crate::forms::gamer::GamerConfigForm;
 use plotters_canvas::CanvasBackend;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::future::Future;
 use std::ops::Range;
-use crate::forms::gamer::GamerConfigForm;
+use crate::forms::forget::ForgetForm;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum Query {
@@ -42,6 +43,7 @@ pub enum Msg {
 	GamerConfig(crate::forms::gamer::Msg),
 	InitConfig(crate::forms::init::Msg),
 	SimulationConfig(crate::forms::simulation::Msg),
+	ForgetConfig(crate::forms::forget::Msg),
 
 	Start,
 	Reset,
@@ -59,6 +61,7 @@ struct Model {
 	gamer_config: GamerConfigForm,
 	init: InitConfigForm,
 	simulation: SimulationForm,
+	forget: ForgetForm,
 
 	ws: WebSocket,
 	scheduler: DrawScheduler,
@@ -84,6 +87,7 @@ fn init(_: Url, orders: &mut impl Orders<Msg>) -> Model {
 		init: InitConfigForm::new(),
 		simulation: SimulationForm::new(),
 
+		forget: ForgetForm::new(),
 		ws: WebSocket::builder("ws://127.0.0.1:3030/ws", orders)
 			.on_message(Msg::Ws)
 			.build_and_open()
@@ -123,9 +127,11 @@ fn update(msg: Msg, model: &mut Model, orders: &mut impl Orders<Msg>) {
 			if let Some(config) = model.config.extract() {
 				send_json(model, &Query::Update(config));
 			}
-		},
+		}
 		Msg::GamerConfig(msg) => {
-			let _ = model.gamer_config.update(msg, &mut orders.proxy(Msg::GamerConfig));
+			let _ = model
+				.gamer_config
+				.update(msg, &mut orders.proxy(Msg::GamerConfig));
 			if let Some(config) = model.gamer_config.extract() {
 				send_json(model, &Query::Update(config));
 			}
@@ -136,9 +142,20 @@ fn update(msg: Msg, model: &mut Model, orders: &mut impl Orders<Msg>) {
 		Msg::SimulationConfig(msg) => {
 			if model
 				.simulation
-				.update(msg, &mut orders.proxy(Msg::SimulationConfig)) {
+				.update(msg, &mut orders.proxy(Msg::SimulationConfig))
+			{
 				if let Some(config) = model.simulation.extract() {
 					model.gamer = config.gamer_mode
+				}
+			}
+		}
+		Msg::ForgetConfig(msg) => {
+			if model
+				.forget
+				.update(msg, &mut orders.proxy(Msg::ForgetConfig))
+			{
+				if let Some(config) = model.forget.extract() {
+					model.scheduler.set_forget(config.forget)
 				}
 			}
 		}
@@ -161,8 +178,7 @@ fn update(msg: Msg, model: &mut Model, orders: &mut impl Orders<Msg>) {
 			model.paused = false;
 			send_json(model, &Query::Resume)
 		}
-		Msg::Scheduler(msg) =>
-			model
+		Msg::Scheduler(msg) => model
 			.scheduler
 			.update(msg, &mut orders.proxy(Msg::Scheduler)),
 		Msg::Delete(id) => {
@@ -181,6 +197,7 @@ fn update(msg: Msg, model: &mut Model, orders: &mut impl Orders<Msg>) {
 			Ok(Response::Error(error)) => handle_notification(model, error, true),
 			Ok(Response::Stopped) => {
 				model.scheduler.stop();
+				model.paused = false;
 				model.started = false;
 			}
 			Err(err) => log!(err),
@@ -225,16 +242,16 @@ fn view(model: &Model) -> Node<Msg> {
 			C!["column p-6"],
 			style! {St::BoxShadow => "-10px 0px 10px 1px #eeeeee"},
 			style! {St::OverflowY => "auto", St::Height => "100vh"},
-			model.init.view(model.started).map_msg(Msg::InitConfig),
+			model.simulation.view(model.started).map_msg(Msg::SimulationConfig),
 			hr![],
+			model.init.view(model.started).map_msg(Msg::InitConfig),
 			match model.gamer {
 				true => model.gamer_config.view().map_msg(Msg::GamerConfig),
 				false => model.config.view().map_msg(Msg::Config),
-			}
-
-	,		hr![],
-			model.simulation.view().map_msg(Msg::SimulationConfig),
-			div![C!["pb-4"]],
+			},
+			hr![],
+			model.forget.view(false).map_msg(Msg::ForgetConfig),
+			div![C!["py-4"]],
 			div![
 				C!["buttons"],
 				model.start.view(false, model.started),

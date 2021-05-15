@@ -288,6 +288,9 @@ pub struct InitConfig {
 	pub patches:     usize,
 	pub individuals: usize,
 	pub loci:        usize,
+
+	// diploid or haploid
+	pub diploid:         bool,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -315,8 +318,6 @@ pub struct Config {
 	pub selection_sigma: f64,
 	// generation overlap
 	pub gamma:           f64,
-	// diploid or haploid
-	pub diploid:         bool,
 	// dispersal parameter
 	pub m:               f64,
 	// environment update function
@@ -327,6 +328,7 @@ pub struct Config {
 pub struct State {
 	pub tick:    u64,
 	pub patches: Vec<(Patch, f64)>,
+	pub diploid: bool
 }
 
 impl State {
@@ -517,7 +519,11 @@ impl State {
 pub fn init(init_config: InitConfig, env: Environment) -> Result<State, &'static str> {
 	let patches = init_config.patches;
 	let individuals = init_config.individuals;
-	let loci = init_config.loci * 2;
+
+	let loci = match init_config.diploid {
+		true => init_config.loci * 2,
+		false => init_config.loci
+	};
 
 	let patch_size = individuals / patches;
 	let p = match init_config.kind {
@@ -552,6 +558,7 @@ pub fn init(init_config: InitConfig, env: Environment) -> Result<State, &'static
 	let state = State {
 		tick:    0,
 		patches: p.zip(e).collect(),
+		diploid: init_config.diploid
 	};
 
 	Ok(state)
@@ -561,8 +568,8 @@ pub fn step(state: &mut State, config: &Config) {
 	state.environment(&config.environment, state.tick);
 	let reproductive_success = state.reproduction(config.selection_sigma);
 	let death = state.adult_death(config.gamma);
-	let mut new_generation = state.density_regulation(reproductive_success, &death, config.diploid);
-	if config.diploid {
+	let mut new_generation = state.density_regulation(reproductive_success, &death, state.diploid);
+	if state.diploid {
 		new_generation = State::recombination(new_generation, config.rec);
 	}
 	new_generation = State::dispersal(new_generation, config.m);

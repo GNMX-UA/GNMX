@@ -14,7 +14,6 @@ pub enum Msg {
 	Rec(<SliderField as Field>::Msg),
 	SelectionSigma(<SliderField as Field>::Msg),
 	Gamma(<SliderField as Field>::Msg),
-	Diploid(<InputField<bool> as Field>::Msg),
 	M(<SliderField as Field>::Msg),
 }
 
@@ -26,13 +25,20 @@ pub struct ConfigForm {
 	environment: SelectField,
 	selection_sigma: SliderField,
 	gamma: SliderField,
-	diploid: InputField<bool>,
 	m: SliderField,
 }
 
 impl ConfigForm {
 	pub fn new() -> Self {
-		let kind_suggestions = make_suggestions(&["uniform", "normal", "equal"]);
+		let kind_suggestions = make_suggestions(&[
+			"Random",
+			"Alternating with 50% chance",
+			"Alternating with 67% chance",
+			"Sinusoid with patch offset",
+			"Random walk",
+			"Constant",
+			"Constant with jumps"
+		]);
 
 		Self {
 			mutation_mu: SliderField::new("Mutation probability", 0.0..1., 0.01),
@@ -42,7 +48,6 @@ impl ConfigForm {
 			environment: SelectField::new("Environment function", kind_suggestions, false),
 			selection_sigma: SliderField::new("Selection strength", 0.01..1., 0.01),
 			gamma: SliderField::new("Generation Overlap", 0.0..1., 0.01),
-			diploid: InputField::new("Diploid", false).with_initial(Some(false)),
 			m: SliderField::new("Dispersal probability", 0.0..1., 0.01),
 		}
 	}
@@ -67,7 +72,6 @@ impl ConfigForm {
 				.selection_sigma
 				.update(msg, &mut orders.proxy(Msg::SelectionSigma)),
 			Msg::Gamma(msg) => self.gamma.update(msg, &mut orders.proxy(Msg::Gamma)),
-			Msg::Diploid(msg) => self.diploid.update(msg, &mut orders.proxy(Msg::Diploid)),
 			Msg::M(msg) => self.m.update(msg, &mut orders.proxy(Msg::M)),
 		}
 	}
@@ -79,7 +83,6 @@ impl ConfigForm {
 		let rec = self.rec.value(true);
 		let selection_sigma = self.selection_sigma.value(true);
 		let gamma = self.gamma.value(true);
-		let diploid = self.diploid.value(true);
 		let m = self.m.value(true);
 		let environment = self.environment.value(true);
 
@@ -101,7 +104,6 @@ impl ConfigForm {
 			rec: rec?,
 			selection_sigma: selection_sigma?,
 			gamma: gamma?,
-			diploid: diploid?,
 			m: m?,
 			environment,
 		})
@@ -109,6 +111,8 @@ impl ConfigForm {
 
 	pub fn view(&self) -> Node<Msg> {
 		div![
+			self.rec.view(false).map_msg(Msg::Rec),
+			hr![],
 			self.environment.view(false).map_msg(Msg::Environment),
 			hr![],
 			self.selection_sigma
@@ -116,9 +120,6 @@ impl ConfigForm {
 				.map_msg(Msg::SelectionSigma),
 			self.gamma.view(false).map_msg(Msg::Gamma),
 			self.m.view(false).map_msg(Msg::M),
-			hr![],
-			self.diploid.view(false).map_msg(Msg::Diploid),
-			self.rec.view(false).map_msg(Msg::Rec),
 			hr![],
 			self.mutation_mu.view(false).map_msg(Msg::MutationMu),
 			self.mutation_sigma.view(false).map_msg(Msg::MutationSigma),

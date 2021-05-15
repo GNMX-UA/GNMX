@@ -1,11 +1,11 @@
 use seed::{futures::StreamExt, prelude::*, *};
 
+use crate::api::make_suggestions;
 use crate::{
 	api::{Config, InitConfig, InitialPopulation, Suggestion, Suggestions},
 	components::Button,
 	fields::{slider::SliderField, Field, InputField, SelectField},
 };
-use crate::api::make_suggestions;
 
 #[derive(Clone, Debug)]
 pub enum Msg {
@@ -14,6 +14,7 @@ pub enum Msg {
 	Individuals(<InputField<u64> as Field>::Msg),
 	Patches(<InputField<u64> as Field>::Msg),
 	Loci(<InputField<u64> as Field>::Msg),
+	Diploid(<InputField<bool> as Field>::Msg),
 }
 
 pub struct InitConfigForm {
@@ -22,23 +23,33 @@ pub struct InitConfigForm {
 	individuals: InputField<u64>,
 	patches: InputField<u64>,
 	loci: InputField<u64>,
+	diploid: InputField<bool>,
 }
 
 impl InitConfigForm {
 	pub fn new() -> Self {
-		let kind_suggestions = make_suggestions(&["uniform", "normal", "equal"]);
+		let kind_suggestions = make_suggestions(&[
+			"Loci uniformly distributed in individual",
+			"Loci uniformly distributed in patch",
+			"Loci uniformly distributed in population",
+			"Loci constant in individual",
+			"Loci constant in patch",
+			"Loci constant in population",
+			"Loci normally distributed in individual",
+			"Loci normally distributed in patch",
+			"Loci normally distributed in population",
+			"Alternating with 50% chance",
+			"Alternating with 67% chance"
+		]);
 
 		Self {
-			t_max:       InputField::new("Ticks", true)
+			t_max: InputField::new("Ticks", true)
 				.with_placeholder("leave empty to run indefinitely"),
-			kind:        SelectField::new(
-				"Initial population distribution",
-				kind_suggestions,
-				false,
-			),
+			kind: SelectField::new("Initial population distribution", kind_suggestions, false),
 			individuals: InputField::new("Population size", false).with_initial(Some(6_000)),
-			patches:     InputField::new("Patch amount", false).with_initial(Some(5)),
-			loci:        InputField::new("Locus amount", false).with_initial(Some(2)),
+			patches: InputField::new("Patch amount", false).with_initial(Some(5)),
+			loci: InputField::new("Locus amount", false).with_initial(Some(2)),
+			diploid: InputField::new("Diploid", false).with_initial(Some(false)),
 		}
 	}
 
@@ -52,6 +63,7 @@ impl InitConfigForm {
 				.update(msg, &mut orders.proxy(Msg::Individuals)),
 			Msg::Patches(msg) => self.patches.update(msg, &mut orders.proxy(Msg::Patches)),
 			Msg::Loci(msg) => self.loci.update(msg, &mut orders.proxy(Msg::Loci)),
+			Msg::Diploid(msg) => self.diploid.update(msg, &mut orders.proxy(Msg::Diploid)),
 		}
 	}
 
@@ -61,6 +73,7 @@ impl InitConfigForm {
 		let individuals = self.individuals.value(true);
 		let patches = self.patches.value(true);
 		let loci = self.loci.value(true);
+		let diploid = self.diploid.value(true);
 
 		let kind = match kind {
 			Some(0) => InitialPopulation::UniformI,
@@ -83,6 +96,7 @@ impl InitConfigForm {
 			individuals: individuals? as usize,
 			patches: patches? as usize,
 			loci: loci? as usize,
+			diploid: diploid?,
 		})
 	}
 
@@ -93,6 +107,8 @@ impl InitConfigForm {
 			self.individuals.view(disabled).map_msg(Msg::Individuals),
 			self.patches.view(disabled).map_msg(Msg::Patches),
 			self.loci.view(disabled).map_msg(Msg::Loci),
+			hr![],
+			self.diploid.view(disabled).map_msg(Msg::Diploid),
 		]
 	}
 }

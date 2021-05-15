@@ -12,9 +12,22 @@ pub fn draw(
 	history: &[(u64, GraphData)],
 	y_range: Range<f64>,
 	title: &str,
+	forget: bool,
 ) -> Option<()> {
 	let font: FontDesc = ("sans-serif", 20.0).into();
-	let x_range = history.first()?.0..history.last()?.0;
+
+	let last = history.last()?.0;
+	let index = history.iter()
+		.enumerate()
+		.find(|(index, (tick, _))| tick + MAX_HISTORY > last)
+		.map(|x| x.0);
+
+	let skip = match (forget, index) {
+		(true, Some(index)) => index,
+		_ => 0
+	};
+
+	let x_range = history.get(skip)?.0..history.last()?.0;
 
 	let mut chart = ChartBuilder::on(&backend)
 		.margin(20)
@@ -34,10 +47,17 @@ pub fn draw(
 		.draw()
 		.ok()?;
 
-	let step = (history.len() / MAX_COLS) + 1;
+	let step = match forget {
+		true => ((history.len() as u64).min(MAX_HISTORY) / MAX_COLS) + 1,
+		false => (history.len() as u64 / MAX_COLS) + 1,
+	} as usize;
+
+	log!(last, step);
 
 	let iter = history
 		.iter()
+		.skip(skip)
+		.step_by(step)
 		.map(|(t, d)| {
 			d.environment
 				.iter()
@@ -45,8 +65,7 @@ pub fn draw(
 				.map(move |(i, s)| (t, i, s))
 		})
 		.flatten()
-		.map(|(t, i, s)| Circle::new((*t, *s), 2, COLORS[i % COLORS.len()].filled()))
-		.step_by(step);
+		.map(|(t, i, s)| Circle::new((*t, *s), 2, COLORS[i % COLORS.len()].filled()));
 
 	chart.draw_series(iter).ok()?;
 

@@ -39,7 +39,7 @@ impl SimulationForm {
         Some(SimulationConfig{gamer_mode: gamer_mode?})
     }
 
-    pub fn view(&self) -> Node<Msg> {
-        div![self.gamer_mode.view(false).map_msg(Msg::GamerMode)]
+    pub fn view(&self, disabled: bool) -> Node<Msg> {
+        div![self.gamer_mode.view(disabled).map_msg(Msg::GamerMode)]
     }
 }

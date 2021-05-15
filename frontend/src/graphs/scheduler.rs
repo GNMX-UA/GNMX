@@ -43,6 +43,8 @@ pub struct DrawScheduler {
 
 	previous: Option<(Instant, u64, Duration)>,
 	stopped: bool,
+	resized: bool,
+	forget: bool,
 	tab: Tab,
 }
 
@@ -55,12 +57,19 @@ impl DrawScheduler {
 			ranges: Default::default(),
 			previous: None,
 			stopped: false,
+			resized: false,
+			forget: true,
 			tab: Tab::General,
 		}
 	}
 
+	pub fn set_forget(&mut self, forget: bool) {
+		self.forget = forget
+	}
+
 	pub fn update(&mut self, msg: Tab, _: &mut impl Orders<Tab>) {
-		self.tab = msg
+		self.tab = msg;
+		let _ = self.maybe_redraw(true).map(|err| log!(err));
 	}
 
 	pub fn update_data(&mut self, tick: u64, data: GraphData) -> Option<&'static str> {
@@ -73,12 +82,12 @@ impl DrawScheduler {
 
 		self.update_ranges(&data);
 		self.history.push((tick, data));
-		self.maybe_redraw()
+		self.maybe_redraw(false)
 	}
 
 	pub fn update_size(&mut self) -> Option<&'static str> {
 		Self::resize().err()?;
-		self.maybe_redraw()
+		self.maybe_redraw(true)
 	}
 
 	pub fn stop(&mut self) {
@@ -119,13 +128,13 @@ impl DrawScheduler {
 		]
 	}
 
-	fn maybe_redraw(&mut self) -> Option<&'static str> {
+	fn maybe_redraw(&mut self, force_tick: bool) -> Option<&'static str> {
 		match self.previous {
 			Some((instant, tick, duration)) => {
 				let expired = instant.elapsed() > duration * 2;
 				let new_data = self.history.last().map(|x| x.0).unwrap_or_default() > tick;
 
-				match expired && new_data {
+				match (force_tick || new_data) && expired {
 					true => self.draw().err(),
 					false => None,
 				}
@@ -190,34 +199,38 @@ impl DrawScheduler {
 			&self.history,
 			self.ranges.phenotype_sample.clone(),
 			"phenotype per patch",
-		)
-		.ok_or("could not draw phenotype plot")?;
-
-		line::draw(
-			&mut rows[1],
-			&self.history,
-			|data| data.phenotype_variance,
-			self.ranges.phenotype_variance.clone(),
-			"phenotype variation",
-		)
-		.ok_or("could not draw phenotype plot")?;
-
-		line::draw(
-			&mut rows[2],
-			&self.history,
-			|data| data.phenotype_distance,
-			self.ranges.phenotype_distance.clone(),
-			"phenotype variation",
+			self.forget
 		)
 		.ok_or("could not draw phenotype plot")?;
 
 		environment::draw(
-			&mut rows[3],
+			&mut rows[1],
 			&self.history,
 			self.ranges.environment.clone(),
 			"environment per patch",
+			self.forget
 		)
-		.ok_or("could not draw environment plot")?;
+			.ok_or("could not draw environment plot")?;
+
+		line::draw(
+			&mut rows[2],
+			&self.history,
+			|data| data.phenotype_variance,
+			self.ranges.phenotype_variance.clone(),
+			"phenotype variation",
+			self.forget
+		)
+		.ok_or("could not draw phenotype plot")?;
+
+		line::draw(
+			&mut rows[3],
+			&self.history,
+			|data| data.phenotype_distance,
+			self.ranges.phenotype_distance.clone(),
+			"phenotype distance",
+			self.forget
+		)
+		.ok_or("could not draw phenotype plot")?;
 
 		Ok(())
 	}
@@ -236,6 +249,7 @@ impl DrawScheduler {
 				locus,
 				self.ranges.loci[locus].clone(),
 				format!("locus #{}", locus).as_str(),
+				self.forget
 			)
 			.ok_or("could not draw loci plot")?;
 		}
@@ -244,10 +258,12 @@ impl DrawScheduler {
 	}
 
 	fn draw(&mut self) -> Result<(), &'static str> {
-		// We are lazy and just resize the thing before drawing, always
-		Self::resize()?;
-
 		let start = Instant::now();
+
+		if !self.resized {
+			Self::resize()?;
+			self.resized = true;
+		}
 
 		let mut canvas = CanvasBackend::new(self.canvas_id).ok_or("cannot find canvas")?;
 		let mut root = canvas.into_drawing_area();
