@@ -46,9 +46,12 @@ impl InitConfigForm {
 			t_max: InputField::new("Ticks", true)
 				.with_placeholder("leave empty to run indefinitely"),
 			kind: SelectField::new("Initial population distribution", kind_suggestions, false),
-			individuals: InputField::new("Population size", false).with_initial(Some(6_000)),
-			patches: InputField::new("Patch amount", false).with_initial(Some(5)),
-			loci: InputField::new("Locus amount", false).with_initial(Some(2)),
+			individuals: InputField::new("Population size", false).with_initial(Some(10_000))
+				.with_validator(|&value| (value == 0).then(|| "Number must be strictly positive.".to_string())),
+			patches: InputField::new("Patch amount", false).with_initial(Some(6))
+				.with_validator(|&value| (value == 0).then(|| "Number must be strictly positive.".to_string())),
+			loci: InputField::new("Locus amount", false).with_initial(Some(1))
+				.with_validator(|&value| (value == 0).then(|| "Number must be strictly positive.".to_string())),
 			diploid: InputField::new("Diploid", false).with_initial(Some(false)),
 		}
 	}

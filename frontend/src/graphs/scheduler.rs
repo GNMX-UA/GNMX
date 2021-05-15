@@ -240,11 +240,12 @@ impl DrawScheduler {
 		root: &mut DrawingArea<CanvasBackend, Shift>,
 	) -> Result<(), &'static str> {
 		let loci = self.history.first().ok_or("No data to draw.")?.1.loci.len();
-		let mut rows = root.split_evenly((loci, 1));
 
-		for locus in 0..loci {
+		let mut rows = root.split_evenly(((1 + loci / 2).min(5), (1 + loci / 5).min(2)));
+
+		for (backend, locus) in rows.iter_mut().zip(0..loci) {
 			loci::draw(
-				&mut rows[locus],
+				backend,
 				&self.history,
 				locus,
 				self.ranges.loci[locus].clone(),
@@ -265,7 +266,7 @@ impl DrawScheduler {
 			self.resized = true;
 		}
 
-		let mut canvas = CanvasBackend::new(self.canvas_id).ok_or("cannot find canvas")?;
+		let canvas = CanvasBackend::new(self.canvas_id).ok_or("cannot find canvas")?;
 		let mut root = canvas.into_drawing_area();
 		root.fill(&WHITE).map_err(|_| "could not fill with white")?;
 

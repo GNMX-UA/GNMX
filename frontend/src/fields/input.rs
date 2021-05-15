@@ -79,11 +79,6 @@ where
     }
 
     fn update(&mut self, msg: Self::Msg, _: &mut impl Orders<Self::Msg>) -> bool {
-        let mapper = |value: &str| match U::from_str(value) {
-            Ok(u) => State::Value(u),
-            Err(err) => State::Error(err.to_string()),
-        };
-
         self.state = match (&msg, &self.initial) {
             (Msg::Value(str), _) if str.is_empty() => State::Empty,
             (Msg::Value(str), Some(initial)) if str == &initial.to_string() => {

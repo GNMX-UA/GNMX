@@ -73,7 +73,7 @@ impl Field for SelectField {
 	fn update(&mut self, msg: Self::Msg, _: &mut impl Orders<Self::Msg>) -> bool {
 		self.initial = None;
 		self.value = match msg.parse() {
-			Ok(x) if x > 0 => Some(x),
+			Ok(x) if x >= 0 => Some(x),
 			_ => None,
 		};
 		true

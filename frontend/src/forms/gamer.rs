@@ -47,11 +47,12 @@ impl GamerConfigForm {
             mutation_step: InputField::new("Mutational step size", false).with_initial(Some(0.01))
                 .with_validator(|&value| (value <= 0.0).then(|| "Number must be strictly positive.".to_string())),
             rec: InputField::new("Recombination probability", false).with_initial(Some(0.01)),
-            environment: SelectField::new("Environment function", kind_suggestions, false),
-            selection_sigma: InputField::new("Selection strength", false).with_initial(Some(0.01))
+            environment: SelectField::new("Environment function", kind_suggestions, false)
+                .with_initial(Some(1)),
+            selection_sigma: InputField::new("Selection strength", false).with_initial(Some(0.3))
                 .with_validator(|&value| (value <= 0.0).then(|| "Number must be strictly positive.".to_string())),
-            gamma: InputField::new("Generation Overlap", false).with_initial(Some(0.01)),
-            m: InputField::new("Dispersal probability", false).with_initial(Some(0.01)),
+            gamma: InputField::new("Generation Overlap", false).with_initial(Some(0.0)),
+            m: InputField::new("Dispersal probability", false).with_initial(Some(1.0)),
         }
     }
 

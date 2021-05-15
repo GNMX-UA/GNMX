@@ -4,20 +4,20 @@ mod fields;
 mod forms;
 mod graphs;
 
-use seed::{prelude::*, *};
-
 use crate::api::{Config, InitConfig};
 use crate::forms::{ConfigForm, InitConfigForm, SimulationForm};
 use crate::graphs::scheduler::{DrawScheduler, GraphData, Tab};
-
 use crate::components::Button;
 use crate::forms::gamer::GamerConfigForm;
+use crate::forms::forget::ForgetForm;
+
 use plotters_canvas::CanvasBackend;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::future::Future;
 use std::ops::Range;
-use crate::forms::forget::ForgetForm;
+use seed::{prelude::*, *};
+
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum Query {

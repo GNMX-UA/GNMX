@@ -45,10 +45,11 @@ impl ConfigForm {
 			mutation_sigma: SliderField::new("Mutational effect", 0.0..1., 0.01),
 			mutation_step: SliderField::new("Mutational step size", 0.01..1., 0.01),
 			rec: SliderField::new("Recombination probability", 0.0..1., 0.01),
-			environment: SelectField::new("Environment function", kind_suggestions, false),
-			selection_sigma: SliderField::new("Selection strength", 0.01..1., 0.01),
-			gamma: SliderField::new("Generation Overlap", 0.0..1., 0.01),
-			m: SliderField::new("Dispersal probability", 0.0..1., 0.01),
+			environment: SelectField::new("Environment function", kind_suggestions, false)
+				.with_initial(Some(1)),
+			selection_sigma: SliderField::new("Selection strength", 0.01..1., 0.3),
+			gamma: SliderField::new("Generation Overlap", 0.0..1., 0.0),
+			m: SliderField::new("Dispersal probability", 0.0..1., 1.0),
 		}
 	}
 

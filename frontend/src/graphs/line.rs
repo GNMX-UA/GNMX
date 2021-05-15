@@ -21,7 +21,7 @@ pub fn draw(
 	let index = history
 		.iter()
 		.enumerate()
-		.find(|(index, (tick, _))| tick + MAX_HISTORY > last)
+		.find(|(_, (tick, _))| tick + MAX_HISTORY > last)
 		.map(|x| x.0);
 
 	let skip = match (forget, index) {
