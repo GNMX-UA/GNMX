@@ -58,7 +58,7 @@ impl Patch {
 
 	pub fn normal_p(patches: usize, patch_size: usize, loci: usize) -> Vec<Patch> {
 		let mut rng = thread_rng();
-		let distr = Normal::new(0.0, 1.0).unwrap();
+		let distr = Normal::new(0.0, 1.0 / loci as f64).unwrap();
 		(0 .. patches)
 			.map(|_| {
 				let loci: TinyVec<[f64; 10]> = distr.sample_iter(&mut rng).take(loci).collect();
@@ -73,7 +73,7 @@ impl Patch {
 
 	pub fn normal_i(patches: usize, patch_size: usize, loci: usize) -> Vec<Patch> {
 		let mut rng = thread_rng();
-		let distr = Normal::new(0.0, 1.0).unwrap();
+		let distr = Normal::new(0.0, 1.0 / loci as f64).unwrap();
 		(0 .. patches)
 			.map(|_| Patch {
 				individuals: (0 .. patch_size)
@@ -88,7 +88,7 @@ impl Patch {
 
 	pub fn uniform(patches: usize, patch_size: usize, loci: usize) -> Vec<Patch> {
 		let mut rng = thread_rng();
-		let distr = Uniform::new(-1.0 as f64, 1.0 as f64);
+		let distr = Uniform::new(-1.0 / loci as f64, 1.0 / loci as f64);
 		let loci: TinyVec<[f64; 10]> = distr.sample_iter(&mut rng).take(loci).collect();
 		(0 .. patches)
 			.map(|_| Patch {
@@ -101,7 +101,7 @@ impl Patch {
 
 	pub fn uniform_p(patches: usize, patch_size: usize, loci: usize) -> Vec<Patch> {
 		let mut rng = thread_rng();
-		let distr = Uniform::new(-1.0 as f64, 1.0 as f64);
+		let distr = Uniform::new(-1.0 / loci as f64, 1.0 / loci as f64);
 		(0 .. patches)
 			.map(|_| {
 				let loci: TinyVec<[f64; 10]> = distr.sample_iter(&mut rng).take(loci).collect();
@@ -116,7 +116,7 @@ impl Patch {
 
 	pub fn uniform_i(patches: usize, patch_size: usize, loci: usize) -> Vec<Patch> {
 		let mut rng = thread_rng();
-		let distr = Uniform::new(-1.0 as f64, 1.0 as f64);
+		let distr = Uniform::new(-1.0 / loci as f64, 1.0 / loci as f64);
 		(0 .. patches)
 			.map(|_| Patch {
 				individuals: (0 .. patch_size)
@@ -131,7 +131,7 @@ impl Patch {
 
 	pub fn constant(patches: usize, patch_size: usize, loci_len: usize) -> Vec<Patch> {
 		let mut rng = thread_rng();
-		let distr = Uniform::new(-1.0 as f64, 1.0 as f64);
+		let distr = Uniform::new(-1.0 / loci_len as f64, 1.0 / loci_len as f64);
 		let value = distr.sample(&mut rng);
 		let mut loci = TinyVec::with_capacity(loci_len);
 		for _ in 0 .. loci_len {
@@ -148,7 +148,7 @@ impl Patch {
 
 	pub fn constant_p(patches: usize, patch_size: usize, loci_len: usize) -> Vec<Patch> {
 		let mut rng = thread_rng();
-		let distr = Uniform::new(-1.0 as f64, 1.0 as f64);
+		let distr = Uniform::new(-1.0 / loci_len as f64, 1.0 / loci_len as f64);
 		(0 .. patches)
 			.map(|_| {
 				let value = distr.sample(&mut rng);
@@ -167,7 +167,7 @@ impl Patch {
 
 	pub fn constant_i(patches: usize, patch_size: usize, loci_len: usize) -> Vec<Patch> {
 		let mut rng = thread_rng();
-		let distr = Uniform::new(-1.0 as f64, 1.0 as f64);
+		let distr = Uniform::new(-1.0 / loci_len as f64, 1.0 / loci_len as f64);
 		(0 .. patches)
 			.map(|_| Patch {
 				individuals: (0 .. patch_size)
@@ -207,7 +207,7 @@ impl Patch {
 
 	pub fn random_env(len: usize) -> Vec<f64> {
 		let mut rng = thread_rng();
-		let distr = Uniform::new(-1.0, 1.0);
+		let distr = Uniform::new(-0.5, 0.5);
 		distr.sample_iter(&mut rng).take(len).collect()
 	}
 
@@ -221,23 +221,23 @@ impl Patch {
 			.collect()
 	}
 
-	pub fn sine_env(len: usize, tick: u64) -> Vec<f64> {
+	pub fn sine_env(len: usize, tick: u64, factor: f64) -> Vec<f64> {
 		(0 .. len)
-			.map(|x| (2.0 * (x as f64 * PI / len as f64 + tick as f64 * PI) / 10000.0).sin())
+			.map(|x| 0.5 * (2.0 * (x as f64 * PI / len as f64 + tick as f64 * PI / factor)).sin())
 			.collect()
 	}
 
 	pub fn random_walk_env(p: Vec<f64>) -> Vec<f64> {
 		let mut rng = thread_rng();
-		let distr = Normal::new(0.0, 0.05).unwrap();
+		let distr = Normal::new(0.0, 0.001).unwrap();
 		p.into_iter()
-			.map(|x| (x + distr.sample(&mut rng)).clamp(-1.0, 1.0))
+			.map(|x| (x + distr.sample(&mut rng)).clamp(-0.5, 0.5))
 			.collect()
 	}
 
 	pub fn constant_with_jumps_env(p: Vec<f64>) -> Vec<f64> {
 		let mut rng = thread_rng();
-		let distr = Bernoulli::new(0.00001).unwrap();
+		let distr = Bernoulli::new(0.0001).unwrap();
 		let random = Uniform::new(-1.0, 1.0);
 		p.into_iter()
 			.map(|x| {
@@ -290,7 +290,7 @@ pub struct InitConfig {
 	pub loci:        usize,
 
 	// diploid or haploid
-	pub diploid:         bool,
+	pub diploid: bool,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -298,7 +298,9 @@ pub enum Environment {
 	Random,
 	AlternatingHalf,
 	AlternatingThird,
-	Sine,
+	SineSlow,
+	SineMedium,
+	SineFast,
 	RandomWalk,
 	Constant,
 	ConstantWithJumps,
@@ -328,7 +330,7 @@ pub struct Config {
 pub struct State {
 	pub tick:    u64,
 	pub patches: Vec<(Patch, f64)>,
-	pub diploid: bool
+	pub diploid: bool,
 }
 
 impl State {
@@ -339,7 +341,9 @@ impl State {
 			Environment::Random => Patch::random_env(len),
 			Environment::AlternatingHalf => Patch::alternating_env(len, 0.5),
 			Environment::AlternatingThird => Patch::alternating_env(len, 2.0 / 3.0),
-			Environment::Sine => Patch::sine_env(len, tick),
+			Environment::SineSlow => Patch::sine_env(len, tick, 700000.0),
+			Environment::SineMedium => Patch::sine_env(len, tick, 20000.0),
+			Environment::SineFast => Patch::sine_env(len, tick, 7000.0),
 			Environment::RandomWalk =>
 				Patch::random_walk_env(self.patches.iter().map(|(_, x)| *x).collect()),
 			Environment::Constant => return,
@@ -416,11 +420,11 @@ impl State {
 
 	/// produce gametes with recombination and then join every two gametes together for every patch
 	/// results in new generation with as many individuals as deaths in the patch
-	pub fn recombination(mut new_generation: Vec<Patch>, rec: f64) -> Vec<Patch> {
-		let k = new_generation[0][0].len() / 2;
+	pub fn recombination(&self, mut new_generation: Vec<Patch>, rec: f64) -> Vec<Patch> {
+		let k = self.patches[0].0[0].len() / 2;
 		let locus_rec = 1.0 - (1.0 / ((k - 1) as f64) * (1.0 - rec).ln()).exp();
 		let mut rng = thread_rng();
-		let distr = Bernoulli::new(locus_rec).unwrap();
+		let distr = Bernoulli::new(locus_rec).expect(&locus_rec.to_string());
 		let swapped = Bernoulli::new(0.5).unwrap();
 		for patch in &mut new_generation {
 			for individual in &mut **patch {
@@ -522,7 +526,7 @@ pub fn init(init_config: InitConfig, env: Environment) -> Result<State, &'static
 
 	let loci = match init_config.diploid {
 		true => init_config.loci * 2,
-		false => init_config.loci
+		false => init_config.loci,
 	};
 
 	let patch_size = individuals / patches;
@@ -545,8 +549,10 @@ pub fn init(init_config: InitConfig, env: Environment) -> Result<State, &'static
 	let e = match env {
 		Environment::Random => Patch::random_env(patches),
 		Environment::AlternatingHalf => Patch::alternating_env(patches, 0.5),
-		Environment::AlternatingThird => Patch::alternating_env(patches, 2.0 * 3.0),
-		Environment::Sine => Patch::sine_env(patches, 0),
+		Environment::AlternatingThird => Patch::alternating_env(patches, 2.0 / 3.0),
+		Environment::SineSlow => Patch::sine_env(patches, 0, 700000.0),
+		Environment::SineMedium => Patch::sine_env(patches, 0, 20000.0),
+		Environment::SineFast => Patch::sine_env(patches, 0, 7000.0),
 		Environment::RandomWalk => Patch::random_walk_env(vec![0.0; patches]),
 		Environment::Constant | Environment::ConstantWithJumps => Uniform::new(-1.0, 1.0)
 			.sample_iter(&mut thread_rng())
@@ -558,7 +564,7 @@ pub fn init(init_config: InitConfig, env: Environment) -> Result<State, &'static
 	let state = State {
 		tick:    0,
 		patches: p.zip(e).collect(),
-		diploid: init_config.diploid
+		diploid: init_config.diploid,
 	};
 
 	Ok(state)
@@ -570,7 +576,7 @@ pub fn step(state: &mut State, config: &Config) {
 	let death = state.adult_death(config.gamma);
 	let mut new_generation = state.density_regulation(reproductive_success, &death, state.diploid);
 	if state.diploid {
-		new_generation = State::recombination(new_generation, config.rec);
+		new_generation = state.recombination(new_generation, config.rec);
 	}
 	new_generation = State::dispersal(new_generation, config.m);
 	new_generation = State::mutation(
