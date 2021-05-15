@@ -217,7 +217,7 @@ impl Patch {
 		distr
 			.sample_iter(&mut rng)
 			.take(len)
-			.map(|x| if x { 1.0 } else { -1.0 })
+			.map(|x| if x { 0.5 } else { -0.5 })
 			.collect()
 	}
 

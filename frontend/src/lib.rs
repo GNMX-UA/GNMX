@@ -124,7 +124,7 @@ fn update(msg: Msg, model: &mut Model, orders: &mut impl Orders<Msg>) {
 		Msg::Config(msg) => {
 			// TODO Add timer to reduce load on websocket maybe?
 			let _ = model.config.update(msg, &mut orders.proxy(Msg::Config));
-			if let Some(config) = model.config.extract() {
+			if let (Some(config), true) = (model.config.extract(), model.started) {
 				send_json(model, &Query::Update(config));
 			}
 		}
