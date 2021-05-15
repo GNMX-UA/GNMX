@@ -550,9 +550,9 @@ pub fn init(init_config: InitConfig, env: Environment) -> Result<State, &'static
 		Environment::Random => Patch::random_env(patches),
 		Environment::AlternatingHalf => Patch::alternating_env(patches, 0.5),
 		Environment::AlternatingThird => Patch::alternating_env(patches, 2.0 / 3.0),
-		Environment::SineSlow => Patch::sine_env(patches, 0, 700000.0),
-		Environment::SineMedium => Patch::sine_env(patches, 0, 20000.0),
-		Environment::SineFast => Patch::sine_env(patches, 0, 7000.0),
+		Environment::SineSlow => Patch::sine_env(patches, 0, 70_000.0),
+		Environment::SineMedium => Patch::sine_env(patches, 0, 20_000.0),
+		Environment::SineFast => Patch::sine_env(patches, 0, 7_000.0),
 		Environment::RandomWalk => Patch::random_walk_env(vec![0.0; patches]),
 		Environment::Constant | Environment::ConstantWithJumps => Uniform::new(-1.0, 1.0)
 			.sample_iter(&mut thread_rng())
