@@ -157,10 +157,11 @@ fn simulate(
 
 		match receiver.try_recv() {
 			Err(std::sync::mpsc::TryRecvError::Disconnected) => {
-				blocking_respond(
-					&sender,
-					Response::Info("Simulation was successfully stopped".to_string()),
-				);
+				// Given an info message each time, but it's annoying
+				// blocking_respond(
+				// 	&sender,
+				// 	Response::Info("Simulation was successfully stopped".to_string()),
+				// );
 				return;
 			}
 			Ok(Notification::Update(new)) => config = new,
