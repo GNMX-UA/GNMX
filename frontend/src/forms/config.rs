@@ -34,7 +34,9 @@ impl ConfigForm {
 			"Random",
 			"Alternating with 50% chance",
 			"Alternating with 67% chance",
-			"Sinusoid with patch offset",
+			"Slow sinusoid with patch offset",
+			"Medium sinusoid with patch offset",
+			"Fast sinusoid with patch offset",
 			"Random walk",
 			"Constant",
 			"Constant with jumps"
@@ -91,10 +93,12 @@ impl ConfigForm {
 			Some(0) => Environment::Random,
 			Some(1) => Environment::AlternatingHalf,
 			Some(2) => Environment::AlternatingThird,
-			Some(3) => Environment::Sine,
-			Some(4) => Environment::RandomWalk,
-			Some(5) => Environment::Constant,
-			Some(6) => Environment::ConstantWithJumps,
+			Some(3) => Environment::SineSlow,
+			Some(4) => Environment::SineMedium,
+			Some(5) => Environment::SineFast,
+			Some(6) => Environment::RandomWalk,
+			Some(7) => Environment::Constant,
+			Some(8) => Environment::ConstantWithJumps,
 			Some(_) | None => return None,
 		};
 

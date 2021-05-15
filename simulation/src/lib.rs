@@ -341,9 +341,9 @@ impl State {
 			Environment::Random => Patch::random_env(len),
 			Environment::AlternatingHalf => Patch::alternating_env(len, 0.5),
 			Environment::AlternatingThird => Patch::alternating_env(len, 2.0 / 3.0),
-			Environment::SineSlow => Patch::sine_env(len, tick, 700000.0),
-			Environment::SineMedium => Patch::sine_env(len, tick, 20000.0),
-			Environment::SineFast => Patch::sine_env(len, tick, 7000.0),
+			Environment::SineSlow => Patch::sine_env(len, tick, 70_000.0),
+			Environment::SineMedium => Patch::sine_env(len, tick, 20_000.0),
+			Environment::SineFast => Patch::sine_env(len, tick, 7_000.0),
 			Environment::RandomWalk =>
 				Patch::random_walk_env(self.patches.iter().map(|(_, x)| *x).collect()),
 			Environment::Constant => return,
