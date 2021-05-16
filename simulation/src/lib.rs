@@ -422,7 +422,12 @@ impl State {
 	/// results in new generation with as many individuals as deaths in the patch
 	pub fn recombination(&self, mut new_generation: Vec<Patch>, rec: f64) -> Vec<Patch> {
 		let k = self.patches[0].0[0].len() / 2;
-		let locus_rec = 1.0 - (1.0 / ((k - 1) as f64) * (1.0 - rec).ln()).exp();
+		// rec = 1-(1-locus_rec)^(k-1)
+		let locus_rec = if (rec == 0.0) {
+			0.0
+		} else {
+			1.0 - (1.0 / ((k - 1) as f64) * (1.0 - rec).ln()).exp()
+		};
 		let mut rng = thread_rng();
 		let distr = Bernoulli::new(locus_rec).expect(&locus_rec.to_string());
 		let swapped = Bernoulli::new(0.5).unwrap();
