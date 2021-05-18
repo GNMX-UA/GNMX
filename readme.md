@@ -1,13 +1,14 @@
 # GNMX
-This is our simulation for the course 'Computational biology'. 
-// TODO
-inspired by Hannes Svardal.
+This is the project of Thomas Dooms, Ward Gauderis, Kato Starckx and Lauren Van Nimmen for the course 'Introduction to computational biology' at the University of Antwerp. 
+This forward-time simulation was made with the purpose of investigating the genetic polymorphism phenomenon.
+The model is based on the [paper](https://doi.org/10.1016/j.tpb.2014.11.002) by Hannes Svardal, Claus Rueffler and Joachim Hermisson.
+More information can be found in the [report](report.pdf) (in Dutch).
 
-## Default values and configuring the simulation
-We have used a default that resembles the parameters discussed in the paper. 
-
+## Configuring the simulation
 When in need for more precision, use the 'precision mode' at the top,
 this will turn the sliders into input boxes which allow for more precision such as 0.001.
+The graphs will only plot a subset of the simulated data to keep the simulation realtime.
+They will automatically remove data after 30 000 ticks, this can be turned off with the 'forget' option.
 
 ## Installing
 This GitHub page contains precompiled releases for both Windows and Linux (as these are the only systems we have at our disposal). 
@@ -22,11 +23,9 @@ To access the simulation perform the following steps:
 ```
 
 ## Known bugs
-As with most software, this simulation is not perfect. There were some edge cases we were not able to cleanly handle in time.
+There are some edge cases we were not able to cleanly handle in time.
 - Setting a population size smaller than the amount of patches results in a crash (as we divide by the patch size).
 - In the same lines using very small population sizes causes the plots to look weird, we have not investigated if this is a bug or normal behaviour.
-- Using exceedingly large numbers will cause an 'out of memory' crash.
-- There are probably other configurations where a division by 0 might happen
 - Switching between precision mode and default mode reset the values to their defaults.
 
 ## Development
