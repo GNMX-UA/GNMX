@@ -245,7 +245,7 @@ impl DrawScheduler {
 			root.split_evenly((loci, 1))
 		}
 		else {
-			root.split_evenly(((loci / 2).max(5), 2))
+			root.split_evenly(((loci / 2).min(5), 2))
 		};
 
 		for (backend, locus) in rows.iter_mut().zip(0..loci) {
