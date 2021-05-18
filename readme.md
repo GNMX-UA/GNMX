@@ -25,7 +25,7 @@ To access the simulation perform the following steps:
 As with most software, this simulation is not perfect. There were some edge cases we were not able to cleanly handle in time.
 - Setting a population size smaller than the amount of patches results in a crash (as we divide by the patch size).
 - In the same lines using very small population sizes causes the plots to look weird, we have not investigated if this is a bug or normal behaviour.
-- Using extremely large numbers will cause an 'out of memory' crash.
+- Using exceedingly large numbers will cause an 'out of memory' crash.
 - There are probably other configurations where a division by 0 might happen
 - Switching between precision mode and default mode reset the values to their defaults.
 
