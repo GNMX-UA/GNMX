@@ -7,7 +7,8 @@ More information can be found in the [report](report.pdf) (in Dutch).
 ## Configuring the simulation
 When in need for more precision, use the 'precision mode' at the top,
 this will turn the sliders into input boxes which allow for more precision such as 0.001.
-The graphs will only plot a subset of the simulated data to keep the simulation realtime.
+
+The graphs will only plot a subset of the simulated data to keep the simulation real-time.
 They will automatically remove data after 30 000 ticks, this can be turned off with the 'forget' option.
 
 ## Installing
@@ -25,7 +26,8 @@ To access the simulation perform the following steps:
 ## Known bugs
 There are some edge cases we were not able to cleanly handle in time.
 - Setting a population size smaller than the amount of patches results in a crash (as we divide by the patch size).
-- In the same lines using very small population sizes causes the plots to look weird, we have not investigated if this is a bug or normal behaviour.
+- Plots throw away data after 30 000 ticks, when the simulation runs has few individuals only a few data points wil be generated every 30 000 ticks. 
+  This will cause weird graphs with only a few values.
 - Switching between precision mode and default mode reset the values to their defaults.
 
 ## Development
