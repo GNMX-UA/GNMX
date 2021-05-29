@@ -12,7 +12,7 @@ The graphs will only plot a subset of the simulated data to keep the simulation 
 They will automatically remove data after 30 000 ticks, this can be turned off with the 'forget' option.
 
 ## Manual Installation
-This GitHub page contains precompiled releases for both Windows and Linux (as these are the only systems we have at our disposal). 
+This GitHub page contains precompiled releases for both Windows and Linux (as these are the only systems we have at our disposal, a Docker container is also available [here](https://hub.docker.com/repository/docker/wardgauderis/gnmx)). 
 These can be found to the right of the GitHub page. Download the **GNMX.zip** file for your current OS. 
 When unzipped, this folder contains a **backed.exe** on Windows just the **backend** on Linux.
 There is also a **static** folder which contains the pre-compiled webassembly for the frontend.
@@ -24,7 +24,7 @@ To access the simulation perform the following steps:
 ```
 
 ## Docker
-It is possible to run the server as a docker container. Help on installing docker can be found 
+It is possible to run the server as a [docker container](https://hub.docker.com/repository/docker/wardgauderis/gnmx). Help on installing docker can be found 
 [here](https://docs.docker.com/get-docker/). 
 Deploying and starting the server can be done with the following command (assuming docker is installed).
 
