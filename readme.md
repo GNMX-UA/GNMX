@@ -11,7 +11,7 @@ this will turn the sliders into input boxes which allow for more precision such 
 The graphs will only plot a subset of the simulated data to keep the simulation real-time.
 They will automatically remove data after 30 000 ticks, this can be turned off with the 'forget' option.
 
-## Installing
+## Manual Installation
 This GitHub page contains precompiled releases for both Windows and Linux (as these are the only systems we have at our disposal). 
 These can be found to the right of the GitHub page. Download the **GNMX.zip** file for your current OS. 
 When unzipped, this folder contains a **backed.exe** on Windows just the **backend** on Linux.
@@ -22,6 +22,18 @@ To access the simulation perform the following steps:
 1) double-click backend.exe in Windows or run ./backend in Linux
 2) go to 'localhost:3030' in the browser. 
 ```
+
+## Docker
+It is possible to run the server as a docker container. Help on installing docker can be found 
+[here](https://docs.docker.com/get-docker/). 
+Deploying and starting the server can be done with the following command (assuming docker is installed).
+
+```
+docker run -d -p 3030:3030 wardgauderis/gnmx
+```
+
+After this is done, the webpage will be accessible in 'localhost:3030' in the browser.
+
 
 ## Known bugs
 There are some edge cases we were not able to cleanly handle in time.
