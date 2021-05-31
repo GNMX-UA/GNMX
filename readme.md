@@ -38,9 +38,9 @@ After this is done, the webpage will be accessible in 'localhost:3030' in the br
 ## Known bugs
 There are some edge cases we were not able to cleanly handle in time.
 - Setting a population size smaller than the amount of patches results in a crash (as we divide by the patch size).
-- Plots throw away data after 30 000 ticks, when the simulation runs has few individuals only a few data points wil be generated every 30 000 ticks. 
+- Plots throw away data after 30 000 ticks, when the simulation only has very few individuals only a select amount data points wil be generated every 30 000 ticks. 
   This will cause weird graphs with only a few values.
-- Switching between precision mode and default mode reset the values to their defaults.
+- Switching between precision mode and default mode resets the values to their defaults.
 
 ## Development
 This simulation is written in Rust. The program is divided into three crates (or packages). 
